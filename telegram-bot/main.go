@@ -174,7 +174,14 @@ func startSurvey(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 func startHeightQuestion(bot *tgbotapi.BotAPI, chatID int64, selectedTee string) {
-	state := userStates[chatID]
+	// Проверяем, существует ли состояние пользователя
+	state, exists := userStates[chatID]
+	if !exists {
+		// Если состояния нет, создаем новое
+		state = &UserState{Step: 1}
+		userStates[chatID] = state
+	}
+	
 	state.Step = 2
 	state.SelectedTee = selectedTee
 
@@ -267,7 +274,21 @@ func handleOversizeCallback(bot *tgbotapi.BotAPI, chatID int64, oversize bool) {
 func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	log.Printf("Показываю рекомендации для чата %d, товар: %s", chatID, state.SelectedTee)
 
-	teeIndex, _ := strconv.Atoi(state.SelectedTee)
+	teeIndex, err := strconv.Atoi(state.SelectedTee)
+	if err != nil {
+		log.Printf("Ошибка парсинга индекса товара: %v", err)
+		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
+		bot.Send(msg)
+		return
+	}
+	
+	if teeIndex < 0 || teeIndex >= len(products) {
+		log.Printf("Неверный индекс товара: %d, доступно товаров: %d", teeIndex, len(products))
+		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
+		bot.Send(msg)
+		return
+	}
+	
 	product := products[teeIndex]
 
 	size := calculateSize(state.Height, state.ChestSize, state.Oversize)

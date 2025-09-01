@@ -106,6 +106,9 @@ func sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonURL("Каталог на сайте", "https://osteomerch.com/katalog/"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Связаться с менеджером", "contact_manager"),
+		),
 	)
 
 	msg.ReplyMarkup = keyboard
@@ -123,6 +126,15 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 	case "browse":
 		log.Printf("Показ каталога для чата %d", chatID)
 		showCatalog(bot, chatID)
+	case "contact_manager":
+		log.Printf("Запрос связи с менеджером для чата %d", chatID)
+		showContactManagerMenu(bot, chatID)
+	case "bitrix24_line":
+		log.Printf("Подключение к открытой линии Битрикс24 для чата %d", chatID)
+		connectToBitrix24(bot, chatID)
+	case "back_to_menu":
+		log.Printf("Возврат в главное меню для чата %d", chatID)
+		sendMainMenu(bot, chatID)
 	case "oversize_yes":
 		handleOversizeCallback(bot, chatID, true)
 	case "oversize_no":
@@ -181,7 +193,7 @@ func startHeightQuestion(bot *tgbotapi.BotAPI, chatID int64, selectedTee string)
 		state = &UserState{Step: 1}
 		userStates[chatID] = state
 	}
-	
+
 	state.Step = 2
 	state.SelectedTee = selectedTee
 
@@ -271,8 +283,48 @@ func handleOversizeCallback(bot *tgbotapi.BotAPI, chatID int64, oversize bool) {
 	delete(userStates, chatID)
 }
 
+func showContactManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "Выберите способ связи с менеджером:")
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Открытая линия Битрикс24", "bitrix24_line"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад в меню", "back_to_menu"),
+		),
+	)
+
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
+func connectToBitrix24(bot *tgbotapi.BotAPI, chatID int64) {
+	// Здесь будет логика подключения к открытой линии Битрикс24
+	// Пока что отправляем сообщение о подключении
+	
+	msg := tgbotapi.NewMessage(chatID, "🔗 Подключение к открытой линии Битрикс24...\n\nМенеджер скоро свяжется с вами через открытую линию.\n\nДля возврата в главное меню нажмите кнопку ниже.")
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Главное меню", "back_to_menu"),
+		),
+	)
+
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
 func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	log.Printf("Показываю рекомендации для чата %d, товар: %s", chatID, state.SelectedTee)
+
+	// Проверяем, что SelectedTee не пустой
+	if state.SelectedTee == "" {
+		log.Printf("Ошибка: SelectedTee пустой для чата %d", chatID)
+		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
+		bot.Send(msg)
+		return
+	}
 
 	teeIndex, err := strconv.Atoi(state.SelectedTee)
 	if err != nil {
@@ -281,14 +333,14 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 		bot.Send(msg)
 		return
 	}
-	
+
 	if teeIndex < 0 || teeIndex >= len(products) {
 		log.Printf("Неверный индекс товара: %d, доступно товаров: %d", teeIndex, len(products))
 		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
 		bot.Send(msg)
 		return
 	}
-	
+
 	product := products[teeIndex]
 
 	size := calculateSize(state.Height, state.ChestSize, state.Oversize)

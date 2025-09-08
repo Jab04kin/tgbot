@@ -370,7 +370,7 @@ func contactManagerDirect(bot *tgbotapi.BotAPI, chatID int64) {
 			return
 		}
 	}
-	
+
 	// Создаем тикет сразу и просим написать вопрос
 	createTicketAndAskQuestion(bot, chatID)
 }
@@ -378,7 +378,7 @@ func contactManagerDirect(bot *tgbotapi.BotAPI, chatID int64) {
 func createTicketAndAskQuestion(bot *tgbotapi.BotAPI, chatID int64) {
 	// Проверяем, есть ли данные пользователя для создания тикета
 	state, exists := userStates[chatID]
-	
+
 	// Создаем тикет с данными клиента (если есть) или без них
 	var ticket *Ticket
 	if exists {
@@ -417,38 +417,37 @@ func createTicketAndAskQuestion(bot *tgbotapi.BotAPI, chatID int64) {
 			LastMessage:     time.Now(),
 		}
 	}
-	
+
 	// Сохраняем тикет
 	tickets[nextTicketID] = ticket
 	userTickets[chatID] = nextTicketID
 	nextTicketID++
-	
+
 	// Отправляем карточку клиента менеджеру
 	sendClientCardToManager(bot, ticket)
-	
+
 	// Просим пользователя написать вопрос
 	msg := tgbotapi.NewMessage(chatID, "✅ Создан диалог с менеджером!\n\nКакой у вас вопрос? Напишите его в этом чате, и менеджер получит ваше сообщение.")
-	
+
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Главное меню", "back_to_menu"),
 		),
 	)
-	
+
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)
-	
+
 	// Включаем режим диалога с менеджером
 	questionStates[chatID] = true
 }
-
 
 func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 	oversizeText := "Нет"
 	if ticket.Oversize {
 		oversizeText = "Да"
 	}
-	
+
 	// Формируем сообщение в зависимости от наличия данных
 	var messageText string
 	if ticket.Height > 0 && ticket.ChestSize > 0 {
@@ -505,10 +504,10 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 			ticket.ID,
 			ticket.ID)
 	}
-	
+
 	msg := tgbotapi.NewMessage(managerID, messageText)
 	bot.Send(msg)
-	
+
 	log.Printf("Отправлена карточка клиента для тикета #%d менеджеру", ticket.ID)
 }
 
@@ -548,32 +547,6 @@ func handleManagerQuestion(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	log.Printf("Отправлено сообщение от пользователя %d в тикет #%d", chatID, ticketID)
 }
 
-func sendQuestionToManager(bot *tgbotapi.BotAPI, question ManagerQuestion) {
-	if managerID == 0 {
-		log.Printf("MANAGER_ID не установлен, вопрос от пользователя %d не отправлен", question.UserID)
-		return
-	}
-
-	// Формируем сообщение для менеджера
-	messageText := fmt.Sprintf("❓ Новый вопрос от клиента:\n\n"+
-		"👤 Пользователь: %s %s (@%s)\n"+
-		"🆔 ID: %d\n"+
-		"❓ Вопрос: %s\n"+
-		"🕐 Время: %s\n\n"+
-		"Для ответа используйте: Ответ: %d [ваш_ответ]",
-		question.FirstName,
-		question.LastName,
-		question.Username,
-		question.UserID,
-		question.Question,
-		question.Timestamp.Format("15:04 02.01.2006"),
-		question.UserID)
-
-	msg := tgbotapi.NewMessage(managerID, messageText)
-	bot.Send(msg)
-
-	log.Printf("Отправлен вопрос от пользователя %d менеджеру %d", question.UserID, managerID)
-}
 
 func isManagerResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message) bool {
 	return managerID != 0 && message.From.ID == managerID

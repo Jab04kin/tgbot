@@ -22,28 +22,28 @@ type UserState struct {
 }
 
 type Ticket struct {
-	ID          int
-	UserID      int64
-	Username    string
-	FirstName   string
-	LastName    string
-	Height      int
-	ChestSize   int
-	Oversize    bool
+	ID              int
+	UserID          int64
+	Username        string
+	FirstName       string
+	LastName        string
+	Height          int
+	ChestSize       int
+	Oversize        bool
 	RecommendedSize string
-	Question    string
-	Status      string // "open", "closed"
-	CreatedAt   time.Time
-	LastMessage time.Time
+	Question        string
+	Status          string // "open", "closed"
+	CreatedAt       time.Time
+	LastMessage     time.Time
 }
 
 type ManagerQuestion struct {
-	UserID      int64
-	Username    string
-	FirstName   string
-	LastName    string
-	Question    string
-	Timestamp   time.Time
+	UserID    int64
+	Username  string
+	FirstName string
+	LastName  string
+	Question  string
+	Timestamp time.Time
 }
 
 type Product struct {
@@ -55,8 +55,8 @@ type Product struct {
 
 var userStates = make(map[int64]*UserState)
 var questionStates = make(map[int64]bool) // true если пользователь в режиме вопроса менеджеру
-var tickets = make(map[int]*Ticket) // все тикеты
-var userTickets = make(map[int64]int) // связь пользователь -> ID тикета
+var tickets = make(map[int]*Ticket)       // все тикеты
+var userTickets = make(map[int64]int)     // связь пользователь -> ID тикета
 var nextTicketID = 1
 var managerID int64 = 123456789 // @Shpinatyamba - замени на реальный ID
 
@@ -139,13 +139,13 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			handleManagerResponse(bot, message)
 			return
 		}
-		
+
 		// Проверяем, находится ли пользователь в режиме вопроса менеджеру
 		if questionStates[chatID] {
 			handleManagerQuestion(bot, message)
 			return
 		}
-		
+
 		state, exists := userStates[chatID]
 		if exists {
 			handleSurveyResponse(bot, message, state)
@@ -370,12 +370,12 @@ func contactManagerDirect(bot *tgbotapi.BotAPI, chatID int64) {
 			return
 		}
 	}
-	
+
 	// Проверяем, есть ли данные пользователя для создания тикета
 	state, exists := userStates[chatID]
 	if !exists {
 		msg := tgbotapi.NewMessage(chatID, "❌ Для связи с менеджером сначала пройдите подбор размера.\n\nМенеджер получит ваши данные и сможет дать персональную консультацию.")
-		
+
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
 			tgbotapi.NewInlineKeyboardRow(
 				tgbotapi.NewInlineKeyboardButtonData("Подобрать размер", "select"),
@@ -384,12 +384,12 @@ func contactManagerDirect(bot *tgbotapi.BotAPI, chatID int64) {
 				tgbotapi.NewInlineKeyboardButtonData("Назад в меню", "back_to_menu"),
 			),
 		)
-		
+
 		msg.ReplyMarkup = keyboard
 		bot.Send(msg)
 		return
 	}
-	
+
 	// Создаем тикет с данными клиента
 	recommendedSize := calculateSize(state.ChestSize, state.Oversize)
 	ticket := &Ticket{
@@ -407,27 +407,27 @@ func contactManagerDirect(bot *tgbotapi.BotAPI, chatID int64) {
 		CreatedAt:       time.Now(),
 		LastMessage:     time.Now(),
 	}
-	
+
 	// Сохраняем тикет
 	tickets[nextTicketID] = ticket
 	userTickets[chatID] = nextTicketID
 	nextTicketID++
-	
+
 	// Отправляем карточку клиента менеджеру
 	sendClientCardToManager(bot, ticket)
-	
+
 	// Уведомляем пользователя
 	msg := tgbotapi.NewMessage(chatID, "✅ Создан диалог с менеджером!\n\nМенеджер получил ваши данные и скоро ответит. Вы можете писать сообщения в этом чате.")
-	
+
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Главное меню", "back_to_menu"),
 		),
 	)
-	
+
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)
-	
+
 	// Включаем режим диалога с менеджером
 	questionStates[chatID] = true
 }
@@ -437,7 +437,7 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 	if ticket.Oversize {
 		oversizeText = "Да"
 	}
-	
+
 	messageText := fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
 		"👤 Клиент: %s %s (@%s)\n"+
 		"🆔 ID: %d\n"+
@@ -464,17 +464,17 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 		ticket.ID,
 		ticket.ID,
 		ticket.ID)
-	
+
 	msg := tgbotapi.NewMessage(managerID, messageText)
 	bot.Send(msg)
-	
+
 	log.Printf("Отправлена карточка клиента для тикета #%d менеджеру", ticket.ID)
 }
 
 func handleManagerQuestion(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	chatID := message.Chat.ID
 	question := message.Text
-	
+
 	// Находим тикет пользователя
 	ticketID, exists := userTickets[chatID]
 	if !exists {
@@ -483,7 +483,7 @@ func handleManagerQuestion(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		delete(questionStates, chatID)
 		return
 	}
-	
+
 	ticket, found := tickets[ticketID]
 	if !found || ticket.Status != "open" {
 		msg := tgbotapi.NewMessage(chatID, "❌ Тикет закрыт или не найден. Создайте новый диалог с менеджером.")
@@ -491,19 +491,19 @@ func handleManagerQuestion(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		delete(questionStates, chatID)
 		return
 	}
-	
+
 	// Обновляем данные пользователя в тикете
 	ticket.Username = message.From.UserName
 	ticket.FirstName = message.From.FirstName
 	ticket.LastName = message.From.LastName
 	ticket.Question = question
 	ticket.LastMessage = time.Now()
-	
+
 	// Отправляем сообщение менеджеру
 	messageText := fmt.Sprintf("💬 Сообщение от клиента (тикет #%d):\n\n%s", ticketID, question)
 	msg := tgbotapi.NewMessage(managerID, messageText)
 	bot.Send(msg)
-	
+
 	log.Printf("Отправлено сообщение от пользователя %d в тикет #%d", chatID, ticketID)
 }
 
@@ -512,7 +512,7 @@ func sendQuestionToManager(bot *tgbotapi.BotAPI, question ManagerQuestion) {
 		log.Printf("MANAGER_ID не установлен, вопрос от пользователя %d не отправлен", question.UserID)
 		return
 	}
-	
+
 	// Формируем сообщение для менеджера
 	messageText := fmt.Sprintf("❓ Новый вопрос от клиента:\n\n"+
 		"👤 Пользователь: %s %s (@%s)\n"+
@@ -527,10 +527,10 @@ func sendQuestionToManager(bot *tgbotapi.BotAPI, question ManagerQuestion) {
 		question.Question,
 		question.Timestamp.Format("15:04 02.01.2006"),
 		question.UserID)
-	
+
 	msg := tgbotapi.NewMessage(managerID, messageText)
 	bot.Send(msg)
-	
+
 	log.Printf("Отправлен вопрос от пользователя %d менеджеру %d", question.UserID, managerID)
 }
 
@@ -540,7 +540,7 @@ func isManagerResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message) bool {
 
 func handleManagerResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	text := message.Text
-	
+
 	// Обработка команд менеджера
 	switch {
 	case text == "/tickets":
@@ -572,23 +572,23 @@ func handleTicketsList(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		bot.Send(msg)
 		return
 	}
-	
+
 	var text strings.Builder
 	text.WriteString("🎫 Список тикетов:\n\n")
-	
+
 	for _, ticket := range tickets {
 		status := "🟢 Открыт"
 		if ticket.Status == "closed" {
 			status = "🔴 Закрыт"
 		}
-		
-		text.WriteString(fmt.Sprintf("#%d %s %s - %s\n", 
-			ticket.ID, 
-			ticket.FirstName, 
-			ticket.LastName, 
+
+		text.WriteString(fmt.Sprintf("#%d %s %s - %s\n",
+			ticket.ID,
+			ticket.FirstName,
+			ticket.LastName,
 			status))
 	}
-	
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, text.String())
 	bot.Send(msg)
 }
@@ -600,31 +600,31 @@ func handleTicketView(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		bot.Send(msg)
 		return
 	}
-	
+
 	ticketID, err := strconv.Atoi(parts[1])
 	if err != nil {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный ID тикета")
 		bot.Send(msg)
 		return
 	}
-	
+
 	ticket, exists := tickets[ticketID]
 	if !exists {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Тикет не найден")
 		bot.Send(msg)
 		return
 	}
-	
+
 	oversizeText := "Нет"
 	if ticket.Oversize {
 		oversizeText = "Да"
 	}
-	
+
 	status := "🟢 Открыт"
 	if ticket.Status == "closed" {
 		status = "🔴 Закрыт"
 	}
-	
+
 	text := fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
 		"👤 Клиент: %s %s (@%s)\n"+
 		"🆔 ID: %d\n"+
@@ -645,7 +645,7 @@ func handleTicketView(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		ticket.Question,
 		ticket.CreatedAt.Format("15:04 02.01.2006"),
 		ticket.LastMessage.Format("15:04 02.01.2006"))
-	
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, text)
 	bot.Send(msg)
 }
@@ -657,40 +657,40 @@ func handleTicketReply(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		bot.Send(msg)
 		return
 	}
-	
+
 	ticketID, err := strconv.Atoi(parts[1])
 	if err != nil {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный ID тикета")
 		bot.Send(msg)
 		return
 	}
-	
+
 	ticket, exists := tickets[ticketID]
 	if !exists {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Тикет не найден")
 		bot.Send(msg)
 		return
 	}
-	
+
 	if ticket.Status != "open" {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Тикет закрыт")
 		bot.Send(msg)
 		return
 	}
-	
+
 	replyText := parts[2]
-	
+
 	// Отправляем ответ клиенту
 	responseMsg := tgbotapi.NewMessage(ticket.UserID, fmt.Sprintf("💬 Ответ от менеджера:\n\n%s", replyText))
 	bot.Send(responseMsg)
-	
+
 	// Обновляем время последнего сообщения
 	ticket.LastMessage = time.Now()
-	
+
 	// Подтверждаем менеджеру
 	confirmMsg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("✅ Ответ отправлен в тикет #%d", ticketID))
 	bot.Send(confirmMsg)
-	
+
 	log.Printf("Менеджер ответил в тикет #%d: %s", ticketID, replyText)
 }
 
@@ -701,41 +701,41 @@ func handleTicketClose(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		bot.Send(msg)
 		return
 	}
-	
+
 	ticketID, err := strconv.Atoi(parts[1])
 	if err != nil {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный ID тикета")
 		bot.Send(msg)
 		return
 	}
-	
+
 	ticket, exists := tickets[ticketID]
 	if !exists {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Тикет не найден")
 		bot.Send(msg)
 		return
 	}
-	
+
 	if ticket.Status == "closed" {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Тикет уже закрыт")
 		bot.Send(msg)
 		return
 	}
-	
+
 	// Закрываем тикет
 	ticket.Status = "closed"
-	
+
 	// Уведомляем клиента
 	closeMsg := tgbotapi.NewMessage(ticket.UserID, "🔒 Диалог с менеджером завершен.\n\nСпасибо за обращение! Если у вас есть другие вопросы, создайте новый диалог.")
 	bot.Send(closeMsg)
-	
+
 	// Удаляем состояние вопроса
 	delete(questionStates, ticket.UserID)
-	
+
 	// Подтверждаем менеджеру
 	confirmMsg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("✅ Тикет #%d закрыт", ticketID))
 	bot.Send(confirmMsg)
-	
+
 	log.Printf("Тикет #%d закрыт менеджером", ticketID)
 }
 
@@ -749,14 +749,14 @@ func handleOldReplyFormat(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			bot.Send(msg)
 			return
 		}
-		
+
 		answerText := parts[2]
 		responseMsg := tgbotapi.NewMessage(userID, fmt.Sprintf("💬 Ответ от менеджера:\n\n%s", answerText))
 		bot.Send(responseMsg)
-		
+
 		confirmMsg := tgbotapi.NewMessage(message.Chat.ID, fmt.Sprintf("✅ Ответ отправлен пользователю %d", userID))
 		bot.Send(confirmMsg)
-		
+
 		log.Printf("Менеджер ответил пользователю %d: %s", userID, answerText)
 	} else {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный формат. Используйте: Ответ: [ID_пользователя] [текст_ответа]")

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -67,11 +68,60 @@ var products = []Product{
 	{"Футболка Black to Black 2 черная", []string{"S", "M", "L", "XL", "XXL"}, "https://osteomerch.com/katalog/item/black-wide-suede-pants-with-white-stripes/", "./katalog/Black to Black 2/1.jpg"},
 }
 
+// Функции для работы с файлом тикетов
+func saveTickets() {
+	data, err := json.MarshalIndent(tickets, "", "  ")
+	if err != nil {
+		log.Printf("Ошибка сериализации тикетов: %v", err)
+		return
+	}
+	
+	err = os.WriteFile("tickets.json", data, 0644)
+	if err != nil {
+		log.Printf("Ошибка сохранения тикетов: %v", err)
+	} else {
+		log.Printf("Тикеты сохранены в файл")
+	}
+}
+
+func loadTickets() {
+	data, err := os.ReadFile("tickets.json")
+	if err != nil {
+		log.Printf("Файл тикетов не найден, начинаем с пустого списка")
+		return
+	}
+	
+	err = json.Unmarshal(data, &tickets)
+	if err != nil {
+		log.Printf("Ошибка загрузки тикетов: %v", err)
+		return
+	}
+	
+	// Восстанавливаем nextTicketID
+	maxID := 0
+	for id := range tickets {
+		if id > maxID {
+			maxID = id
+		}
+	}
+	nextTicketID = maxID + 1
+	
+	// Восстанавливаем userTickets
+	for id, ticket := range tickets {
+		userTickets[ticket.UserID] = id
+	}
+	
+	log.Printf("Загружено %d тикетов из файла", len(tickets))
+}
+
 func main() {
 	err := godotenv.Load()
 	if err != nil {
 		log.Println("Файл .env не найден, используем переменные окружения")
 	}
+
+	// Загружаем тикеты из файла
+	loadTickets()
 
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	if err != nil {
@@ -137,7 +187,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		if isManagerResponse(message) {
 			sendManagerMenu(bot, chatID)
 		} else {
-			sendMainMenu(bot, chatID)
+		sendMainMenu(bot, chatID)
 		}
 	default:
 		// Проверяем, является ли это ответом менеджера
@@ -486,6 +536,9 @@ func createTicketAndAskQuestion(bot *tgbotapi.BotAPI, chatID int64) {
 	tickets[nextTicketID] = ticket
 	userTickets[chatID] = nextTicketID
 	nextTicketID++
+
+	// Сохраняем тикеты в файл
+	saveTickets()
 
 	// Отправляем карточку клиента менеджеру
 	sendClientCardToManager(bot, ticket)
@@ -966,6 +1019,9 @@ func closeTicketFromButton(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 	// Закрываем тикет
 	ticket.Status = "closed"
 
+	// Сохраняем изменения в файл
+	saveTickets()
+
 	// Уведомляем клиента
 	closeMsg := tgbotapi.NewMessage(ticket.UserID, "🔒 Диалог с менеджером завершен.\n\nСпасибо за обращение! Если у вас есть другие вопросы, создайте новый диалог.")
 	bot.Send(closeMsg)
@@ -996,6 +1052,9 @@ func openTicketFromButton(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 
 	// Открываем тикет
 	ticket.Status = "open"
+
+	// Сохраняем изменения в файл
+	saveTickets()
 
 	// Уведомляем клиента
 	openMsg := tgbotapi.NewMessage(ticket.UserID, "🔓 Диалог с менеджером возобновлен.\n\nВы можете продолжить общение в этом чате.")
@@ -1140,15 +1199,15 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState, u
 	} else {
 		// Обычное меню
 		keyboard = tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Подобрать еще", "select"),
-				tgbotapi.NewInlineKeyboardButtonData("Каталог", "browse"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonURL("Купить на сайте", product.Link),
-				tgbotapi.NewInlineKeyboardButtonURL("Весь каталог", "https://osteomerch.com/katalog/"),
-			),
-		)
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Подобрать еще", "select"),
+			tgbotapi.NewInlineKeyboardButtonData("Каталог", "browse"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonURL("Купить на сайте", product.Link),
+			tgbotapi.NewInlineKeyboardButtonURL("Весь каталог", "https://osteomerch.com/katalog/"),
+		),
+	)
 	}
 
 	msg.ReplyMarkup = keyboard
@@ -1246,10 +1305,10 @@ func showCatalog(bot *tgbotapi.BotAPI, chatID int64, userID int64) {
 	} else {
 		// Обычное меню
 		keyboard = tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Подобрать", "select"),
-			),
-		)
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Подобрать", "select"),
+		),
+	)
 	}
 
 	finalMsg := tgbotapi.NewMessage(chatID, "Выберите действие:")

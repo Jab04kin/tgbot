@@ -248,11 +248,12 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 
 	case 4:
 		response := strings.ToLower(message.Text)
-		if response == "да" || response == "yes" {
+		switch response {
+		case "да", "yes":
 			state.Oversize = true
-		} else if response == "нет" || response == "no" {
+		case "нет", "no":
 			state.Oversize = false
-		} else {
+		default:
 			msg := tgbotapi.NewMessage(chatID, "Пожалуйста, ответьте 'да' или 'нет'")
 			bot.Send(msg)
 			return
@@ -347,7 +348,7 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 
 	product := products[teeIndex]
 
-	size := calculateSize(state.Height, state.ChestSize, state.Oversize)
+	size := calculateSize(state.ChestSize, state.Oversize)
 
 	responseText := fmt.Sprintf("Вам подойдут следующие размеры модели:\n\n%s - размер %s",
 		product.Name, size)
@@ -371,10 +372,10 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	}
 }
 
-func calculateSize(height, chestSize int, oversize bool) string {
+func calculateSize(chestSize int, oversize bool) string {
 	// Определяем размер по обхвату груди согласно таблице
 	var sizeRange string
-	
+
 	if chestSize >= 82 && chestSize <= 89 {
 		sizeRange = "XS-S"
 	} else if chestSize >= 90 && chestSize <= 97 {

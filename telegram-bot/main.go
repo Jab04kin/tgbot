@@ -370,104 +370,145 @@ func contactManagerDirect(bot *tgbotapi.BotAPI, chatID int64) {
 			return
 		}
 	}
+	
+	// Создаем тикет сразу и просим написать вопрос
+	createTicketAndAskQuestion(bot, chatID)
+}
 
+func createTicketAndAskQuestion(bot *tgbotapi.BotAPI, chatID int64) {
 	// Проверяем, есть ли данные пользователя для создания тикета
 	state, exists := userStates[chatID]
-	if !exists {
-		msg := tgbotapi.NewMessage(chatID, "❌ Для связи с менеджером сначала пройдите подбор размера.\n\nМенеджер получит ваши данные и сможет дать персональную консультацию.")
-
-		keyboard := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Подобрать размер", "select"),
-			),
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Назад в меню", "back_to_menu"),
-			),
-		)
-
-		msg.ReplyMarkup = keyboard
-		bot.Send(msg)
-		return
+	
+	// Создаем тикет с данными клиента (если есть) или без них
+	var ticket *Ticket
+	if exists {
+		// Есть данные подбора размера
+		recommendedSize := calculateSize(state.ChestSize, state.Oversize)
+		ticket = &Ticket{
+			ID:              nextTicketID,
+			UserID:          chatID,
+			Username:        "", // будет заполнено при первом сообщении
+			FirstName:       "", // будет заполнено при первом сообщении
+			LastName:        "", // будет заполнено при первом сообщении
+			Height:          state.Height,
+			ChestSize:       state.ChestSize,
+			Oversize:        state.Oversize,
+			RecommendedSize: recommendedSize,
+			Question:        "",
+			Status:          "open",
+			CreatedAt:       time.Now(),
+			LastMessage:     time.Now(),
+		}
+	} else {
+		// Нет данных подбора размера - создаем тикет без них
+		ticket = &Ticket{
+			ID:              nextTicketID,
+			UserID:          chatID,
+			Username:        "", // будет заполнено при первом сообщении
+			FirstName:       "", // будет заполнено при первом сообщении
+			LastName:        "", // будет заполнено при первом сообщении
+			Height:          0,
+			ChestSize:       0,
+			Oversize:        false,
+			RecommendedSize: "Не определен",
+			Question:        "",
+			Status:          "open",
+			CreatedAt:       time.Now(),
+			LastMessage:     time.Now(),
+		}
 	}
-
-	// Создаем тикет с данными клиента
-	recommendedSize := calculateSize(state.ChestSize, state.Oversize)
-	ticket := &Ticket{
-		ID:              nextTicketID,
-		UserID:          chatID,
-		Username:        "", // будет заполнено при первом сообщении
-		FirstName:       "", // будет заполнено при первом сообщении
-		LastName:        "", // будет заполнено при первом сообщении
-		Height:          state.Height,
-		ChestSize:       state.ChestSize,
-		Oversize:        state.Oversize,
-		RecommendedSize: recommendedSize,
-		Question:        "",
-		Status:          "open",
-		CreatedAt:       time.Now(),
-		LastMessage:     time.Now(),
-	}
-
+	
 	// Сохраняем тикет
 	tickets[nextTicketID] = ticket
 	userTickets[chatID] = nextTicketID
 	nextTicketID++
-
+	
 	// Отправляем карточку клиента менеджеру
 	sendClientCardToManager(bot, ticket)
-
-	// Уведомляем пользователя
-	msg := tgbotapi.NewMessage(chatID, "✅ Создан диалог с менеджером!\n\nМенеджер получил ваши данные и скоро ответит. Вы можете писать сообщения в этом чате.")
-
+	
+	// Просим пользователя написать вопрос
+	msg := tgbotapi.NewMessage(chatID, "✅ Создан диалог с менеджером!\n\nКакой у вас вопрос? Напишите его в этом чате, и менеджер получит ваше сообщение.")
+	
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Главное меню", "back_to_menu"),
 		),
 	)
-
+	
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)
-
+	
 	// Включаем режим диалога с менеджером
 	questionStates[chatID] = true
 }
+
 
 func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 	oversizeText := "Нет"
 	if ticket.Oversize {
 		oversizeText = "Да"
 	}
-
-	messageText := fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
-		"👤 Клиент: %s %s (@%s)\n"+
-		"🆔 ID: %d\n"+
-		"📏 Рост: %d см\n"+
-		"📐 Обхват груди: %d см\n"+
-		"👕 Оверсайз: %s\n"+
-		"✅ Рекомендуемый размер: %s\n"+
-		"🕐 Создан: %s\n\n"+
-		"Команды менеджера:\n"+
-		"• /tickets - список всех тикетов\n"+
-		"• /ticket %d - просмотр тикета\n"+
-		"• /reply %d [сообщение] - ответить клиенту\n"+
-		"• /close %d - закрыть тикет",
-		ticket.ID,
-		ticket.FirstName,
-		ticket.LastName,
-		ticket.Username,
-		ticket.UserID,
-		ticket.Height,
-		ticket.ChestSize,
-		oversizeText,
-		ticket.RecommendedSize,
-		ticket.CreatedAt.Format("15:04 02.01.2006"),
-		ticket.ID,
-		ticket.ID,
-		ticket.ID)
-
+	
+	// Формируем сообщение в зависимости от наличия данных
+	var messageText string
+	if ticket.Height > 0 && ticket.ChestSize > 0 {
+		// Есть данные подбора размера
+		messageText = fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
+			"👤 Клиент: %s %s (@%s)\n"+
+			"🆔 ID: %d\n"+
+			"📏 Рост: %d см\n"+
+			"📐 Обхват груди: %d см\n"+
+			"👕 Оверсайз: %s\n"+
+			"✅ Рекомендуемый размер: %s\n"+
+			"🕐 Создан: %s\n\n"+
+			"Команды менеджера:\n"+
+			"• /tickets - список всех тикетов\n"+
+			"• /ticket %d - просмотр тикета\n"+
+			"• /reply %d [сообщение] - ответить клиенту\n"+
+			"• /close %d - закрыть тикет",
+			ticket.ID,
+			ticket.FirstName,
+			ticket.LastName,
+			ticket.Username,
+			ticket.UserID,
+			ticket.Height,
+			ticket.ChestSize,
+			oversizeText,
+			ticket.RecommendedSize,
+			ticket.CreatedAt.Format("15:04 02.01.2006"),
+			ticket.ID,
+			ticket.ID,
+			ticket.ID)
+	} else {
+		// Нет данных подбора размера
+		messageText = fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
+			"👤 Клиент: %s %s (@%s)\n"+
+			"🆔 ID: %d\n"+
+			"📏 Рост: Не указан\n"+
+			"📐 Обхват груди: Не указан\n"+
+			"👕 Оверсайз: Не указан\n"+
+			"✅ Рекомендуемый размер: %s\n"+
+			"🕐 Создан: %s\n\n"+
+			"Команды менеджера:\n"+
+			"• /tickets - список всех тикетов\n"+
+			"• /ticket %d - просмотр тикета\n"+
+			"• /reply %d [сообщение] - ответить клиенту\n"+
+			"• /close %d - закрыть тикет",
+			ticket.ID,
+			ticket.FirstName,
+			ticket.LastName,
+			ticket.Username,
+			ticket.UserID,
+			ticket.RecommendedSize,
+			ticket.CreatedAt.Format("15:04 02.01.2006"),
+			ticket.ID,
+			ticket.ID,
+			ticket.ID)
+	}
+	
 	msg := tgbotapi.NewMessage(managerID, messageText)
 	bot.Send(msg)
-
+	
 	log.Printf("Отправлена карточка клиента для тикета #%d менеджеру", ticket.ID)
 }
 
@@ -625,26 +666,49 @@ func handleTicketView(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		status = "🔴 Закрыт"
 	}
 
-	text := fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
-		"👤 Клиент: %s %s (@%s)\n"+
-		"🆔 ID: %d\n"+
-		"📏 Рост: %d см\n"+
-		"📐 Обхват груди: %d см\n"+
-		"👕 Оверсайз: %s\n"+
-		"✅ Рекомендуемый размер: %s\n"+
-		"❓ Вопрос: %s\n"+
-		"🕐 Создан: %s\n"+
-		"💬 Последнее сообщение: %s",
-		ticket.ID, status,
-		ticket.FirstName, ticket.LastName, ticket.Username,
-		ticket.UserID,
-		ticket.Height,
-		ticket.ChestSize,
-		oversizeText,
-		ticket.RecommendedSize,
-		ticket.Question,
-		ticket.CreatedAt.Format("15:04 02.01.2006"),
-		ticket.LastMessage.Format("15:04 02.01.2006"))
+	var text string
+	if ticket.Height > 0 && ticket.ChestSize > 0 {
+		// Есть данные подбора размера
+		text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
+			"👤 Клиент: %s %s (@%s)\n"+
+			"🆔 ID: %d\n"+
+			"📏 Рост: %d см\n"+
+			"📐 Обхват груди: %d см\n"+
+			"👕 Оверсайз: %s\n"+
+			"✅ Рекомендуемый размер: %s\n"+
+			"❓ Вопрос: %s\n"+
+			"🕐 Создан: %s\n"+
+			"💬 Последнее сообщение: %s",
+			ticket.ID, status,
+			ticket.FirstName, ticket.LastName, ticket.Username,
+			ticket.UserID,
+			ticket.Height,
+			ticket.ChestSize,
+			oversizeText,
+			ticket.RecommendedSize,
+			ticket.Question,
+			ticket.CreatedAt.Format("15:04 02.01.2006"),
+			ticket.LastMessage.Format("15:04 02.01.2006"))
+	} else {
+		// Нет данных подбора размера
+		text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
+			"👤 Клиент: %s %s (@%s)\n"+
+			"🆔 ID: %d\n"+
+			"📏 Рост: Не указан\n"+
+			"📐 Обхват груди: Не указан\n"+
+			"👕 Оверсайз: Не указан\n"+
+			"✅ Рекомендуемый размер: %s\n"+
+			"❓ Вопрос: %s\n"+
+			"🕐 Создан: %s\n"+
+			"💬 Последнее сообщение: %s",
+			ticket.ID, status,
+			ticket.FirstName, ticket.LastName, ticket.Username,
+			ticket.UserID,
+			ticket.RecommendedSize,
+			ticket.Question,
+			ticket.CreatedAt.Format("15:04 02.01.2006"),
+			ticket.LastMessage.Format("15:04 02.01.2006"))
+	}
 
 	msg := tgbotapi.NewMessage(message.Chat.ID, text)
 	bot.Send(msg)

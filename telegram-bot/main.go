@@ -217,8 +217,8 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 			return
 		}
 
-		if height < 100 || height > 300 {
-			msg := tgbotapi.NewMessage(chatID, "Рост должен быть от 100 до 300 см. Попробуйте еще раз:")
+		if height < 100 || height > 250 {
+			msg := tgbotapi.NewMessage(chatID, "Рост должен быть от 100 до 250 см. Попробуйте еще раз:")
 			bot.Send(msg)
 			return
 		}
@@ -236,8 +236,8 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 			return
 		}
 
-		if chestSize < 30 || chestSize > 100 {
-			msg := tgbotapi.NewMessage(chatID, "Обхват груди должен быть от 30 до 100 см. Попробуйте еще раз:")
+		if chestSize < 70 || chestSize > 130 {
+			msg := tgbotapi.NewMessage(chatID, "Обхват груди должен быть от 70 до 130 см. Попробуйте еще раз:")
 			bot.Send(msg)
 			return
 		}
@@ -375,8 +375,8 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 func calculateSize(chestSize int, oversize bool) string {
 	// Определяем размер по обхвату груди согласно таблице
 	var sizeRange string
-
-	if chestSize >= 82 && chestSize <= 89 {
+	
+	if chestSize >= 70 && chestSize <= 89 {
 		sizeRange = "XS-S"
 	} else if chestSize >= 90 && chestSize <= 97 {
 		sizeRange = "M-L"
@@ -386,10 +386,12 @@ func calculateSize(chestSize int, oversize bool) string {
 		sizeRange = "3XL-4XL"
 	} else if chestSize >= 114 && chestSize <= 121 {
 		sizeRange = "5XL-6XL"
-	} else if chestSize < 82 {
+	} else if chestSize >= 122 && chestSize <= 130 {
+		sizeRange = "7XL-8XL"
+	} else if chestSize < 70 {
 		return "XS-S (размер меньше минимального)"
 	} else {
-		return "5XL-6XL (размер больше максимального)"
+		return "7XL-8XL (размер больше максимального)"
 	}
 
 	// Если запрошен оверсайз, берем больший размер из диапазона
@@ -404,7 +406,9 @@ func calculateSize(chestSize int, oversize bool) string {
 		case "3XL-4XL":
 			return "5XL-6XL"
 		case "5XL-6XL":
-			return "5XL-6XL (максимальный размер)"
+			return "7XL-8XL"
+		case "7XL-8XL":
+			return "7XL-8XL (максимальный размер)"
 		}
 	}
 

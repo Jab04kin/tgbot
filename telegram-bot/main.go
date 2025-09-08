@@ -252,17 +252,12 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 	case "back_to_manager_menu":
 		sendManagerMenu(bot, chatID)
 	case "start_survey":
-		// Если это менеджер, показываем менеджерское меню после опроса
-		if isManagerResponse(&tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}) {
-			startSurvey(bot, chatID)
-		} else {
-			startSurvey(bot, chatID)
-		}
+		startSurvey(bot, chatID)
 	case "catalog":
 		showCatalog(bot, chatID)
 	case "help":
 		// Если это менеджер, показываем менеджерскую помощь
-		if isManagerResponse(&tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}) {
+		if callback.From.UserName == "Shpinatyamba" || (managerID != 0 && callback.From.ID == managerID) {
 			handleManagerHelpCallback(bot, chatID)
 		} else {
 			sendMainMenu(bot, chatID)
@@ -1124,7 +1119,8 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	msg := tgbotapi.NewMessage(chatID, responseText)
 
 	// Определяем, является ли пользователь менеджером
-	isManager := isManagerResponse(&tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}})
+	// Проверяем по ID пользователя (1854868765 - это @Shpinatyamba)
+	isManager := (chatID == 1854868765 || (managerID != 0 && chatID == managerID))
 	
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	if isManager {
@@ -1235,7 +1231,8 @@ func showCatalog(bot *tgbotapi.BotAPI, chatID int64) {
 	}
 
 	// Определяем, является ли пользователь менеджером
-	isManager := isManagerResponse(&tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}})
+	// Проверяем по ID пользователя (1854868765 - это @Shpinatyamba)
+	isManager := (chatID == 1854868765 || (managerID != 0 && chatID == managerID))
 	
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	if isManager {

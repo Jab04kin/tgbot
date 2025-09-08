@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -48,6 +49,9 @@ func main() {
 
 	bot.Debug = true
 	log.Printf("Бот %s запущен", bot.Self.UserName)
+
+	// Запускаем само пинг для Render
+	go startSelfPing()
 
 	// Бесконечный цикл с восстановлением
 	for {
@@ -302,7 +306,7 @@ func showContactManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 func connectToBitrix24(bot *tgbotapi.BotAPI, chatID int64) {
 	// Здесь будет логика подключения к открытой линии Битрикс24
 	// Пока что отправляем сообщение о подключении
-	
+
 	msg := tgbotapi.NewMessage(chatID, "🔗 Подключение к открытой линии Битрикс24...\n\nМенеджер скоро свяжется с вами через открытую линию.\n\nДля возврата в главное меню нажмите кнопку ниже.")
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
@@ -439,5 +443,46 @@ func showCatalog(bot *tgbotapi.BotAPI, chatID int64) {
 	finalMsg.ReplyMarkup = keyboard
 	if _, err := bot.Send(finalMsg); err != nil {
 		log.Printf("Ошибка отправки финального сообщения каталога: %v", err)
+	}
+}
+
+func startSelfPing() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	// Создаем HTTP сервер для само пинга
+	http.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("pong"))
+	})
+
+	// Запускаем сервер в отдельной горутине
+	go func() {
+		log.Printf("Запуск HTTP сервера для само пинга на порту %s", port)
+		if err := http.ListenAndServe(":"+port, nil); err != nil {
+			log.Printf("Ошибка запуска HTTP сервера: %v", err)
+		}
+	}()
+
+	// Пингуем себя каждые 40 секунд
+	url := fmt.Sprintf("http://localhost:%s/ping", port)
+
+	for {
+		time.Sleep(40 * time.Second)
+
+		resp, err := http.Get(url)
+		if err != nil {
+			log.Printf("Ошибка само пинга: %v", err)
+			continue
+		}
+		resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			log.Println("Само пинг выполнен успешно")
+		} else {
+			log.Printf("Само пинг вернул статус: %d", resp.StatusCode)
+		}
 	}
 }

@@ -225,7 +225,7 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		startSurvey(bot, chatID)
 	case "browse":
 		log.Printf("Показ каталога для чата %d", chatID)
-		showCatalog(bot, chatID)
+		showCatalog(bot, chatID, callback.From.ID)
 	case "contact_manager":
 		log.Printf("Запрос связи с менеджером для чата %d", chatID)
 		showContactManagerMenu(bot, chatID)
@@ -236,9 +236,9 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		log.Printf("Возврат в главное меню для чата %d", chatID)
 		sendMainMenu(bot, chatID)
 	case "oversize_yes":
-		handleOversizeCallback(bot, chatID, true)
+		handleOversizeCallback(bot, chatID, true, callback.From.ID)
 	case "oversize_no":
-		handleOversizeCallback(bot, chatID, false)
+		handleOversizeCallback(bot, chatID, false, callback.From.ID)
 	case "manager_tickets":
 		handleManagerTicketsCallback(bot, chatID)
 	case "manager_open_tickets":
@@ -254,7 +254,7 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 	case "start_survey":
 		startSurvey(bot, chatID)
 	case "catalog":
-		showCatalog(bot, chatID)
+		showCatalog(bot, chatID, callback.From.ID)
 	case "help":
 		// Если это менеджер, показываем менеджерскую помощь
 		if callback.From.UserName == "Shpinatyamba" || (managerID != 0 && callback.From.ID == managerID) {
@@ -379,7 +379,7 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 			bot.Send(msg)
 			return
 		}
-		showRecommendations(bot, chatID, state)
+		showRecommendations(bot, chatID, state, message.From.ID)
 		delete(userStates, chatID)
 	}
 }
@@ -398,14 +398,14 @@ func askOversizeQuestion(bot *tgbotapi.BotAPI, chatID int64) {
 	bot.Send(msg)
 }
 
-func handleOversizeCallback(bot *tgbotapi.BotAPI, chatID int64, oversize bool) {
+func handleOversizeCallback(bot *tgbotapi.BotAPI, chatID int64, oversize bool, userID int64) {
 	state, exists := userStates[chatID]
 	if !exists {
 		return
 	}
 
 	state.Oversize = oversize
-	showRecommendations(bot, chatID, state)
+	showRecommendations(bot, chatID, state, userID)
 	delete(userStates, chatID)
 }
 
@@ -1083,7 +1083,7 @@ func handleOldReplyFormat(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	}
 }
 
-func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
+func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState, userID int64) {
 	log.Printf("Показываю рекомендации для чата %d, товар: %s", chatID, state.SelectedTee)
 
 	// Проверяем, что SelectedTee не пустой
@@ -1119,9 +1119,8 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	msg := tgbotapi.NewMessage(chatID, responseText)
 
 	// Определяем, является ли пользователь менеджером
-	// Проверяем по ID пользователя (1854868765 - это @Shpinatyamba)
-	isManager := (chatID == 1854868765 || (managerID != 0 && chatID == managerID))
-	
+	isManager := (userID == 1854868765 || (managerID != 0 && userID == managerID))
+
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	if isManager {
 		// Менеджерское меню
@@ -1201,7 +1200,7 @@ func calculateSize(chestSize int, oversize bool) string {
 	return sizeRange
 }
 
-func showCatalog(bot *tgbotapi.BotAPI, chatID int64) {
+func showCatalog(bot *tgbotapi.BotAPI, chatID int64, userID int64) {
 	log.Printf("Показываю каталог для чата %d", chatID)
 
 	msg := tgbotapi.NewMessage(chatID, "Каталог товаров:")
@@ -1231,9 +1230,8 @@ func showCatalog(bot *tgbotapi.BotAPI, chatID int64) {
 	}
 
 	// Определяем, является ли пользователь менеджером
-	// Проверяем по ID пользователя (1854868765 - это @Shpinatyamba)
-	isManager := (chatID == 1854868765 || (managerID != 0 && chatID == managerID))
-	
+	isManager := (userID == 1854868765 || (managerID != 0 && userID == managerID))
+
 	var keyboard tgbotapi.InlineKeyboardMarkup
 	if isManager {
 		// Менеджерское меню

@@ -183,7 +183,7 @@ func sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
-	// Подсчитываем статистику
+	// Подсчитываем статистику тикетов
 	openTickets := 0
 	closedTickets := 0
 	for _, ticket := range tickets {
@@ -194,21 +194,20 @@ func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 		}
 	}
 
-	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👨‍💼 Панель менеджера\n\n📊 Статистика:\n🟢 Открытых: %d\n🔴 Закрытых: %d\n📈 Всего: %d\n\nВыберите действие:", openTickets, closedTickets, len(tickets)))
+	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👨‍💼 Добро пожаловать, менеджер!\n\n📊 Тикеты: 🟢 %d открытых | 🔴 %d закрытых\n\nВыберите действие:", openTickets, closedTickets))
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📋 Список тикетов", "manager_tickets"),
+			tgbotapi.NewInlineKeyboardButtonData("📏 Подобрать размер", "start_survey"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🆕 Открытые тикеты", "manager_open_tickets"),
-			tgbotapi.NewInlineKeyboardButtonData("🔴 Закрытые тикеты", "manager_closed_tickets"),
+			tgbotapi.NewInlineKeyboardButtonData("📚 Каталог", "catalog"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📊 Подробная статистика", "manager_stats"),
+			tgbotapi.NewInlineKeyboardButtonData("👥 Клиенты", "manager_tickets"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❓ Помощь", "manager_help"),
+			tgbotapi.NewInlineKeyboardButtonData("❓ Помощь", "help"),
 		),
 	)
 
@@ -252,6 +251,22 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		handleManagerHelpCallback(bot, chatID)
 	case "back_to_manager_menu":
 		sendManagerMenu(bot, chatID)
+	case "start_survey":
+		// Если это менеджер, показываем менеджерское меню после опроса
+		if isManagerResponse(&tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}) {
+			startSurvey(bot, chatID)
+		} else {
+			startSurvey(bot, chatID)
+		}
+	case "catalog":
+		showCatalog(bot, chatID)
+	case "help":
+		// Если это менеджер, показываем менеджерскую помощь
+		if isManagerResponse(&tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}) {
+			handleManagerHelpCallback(bot, chatID)
+		} else {
+			sendMainMenu(bot, chatID)
+		}
 	default:
 		if strings.HasPrefix(callback.Data, "tee_") {
 			selectedTee := strings.TrimPrefix(callback.Data, "tee_")
@@ -659,11 +674,6 @@ func handleManagerReplyToTicket(bot *tgbotapi.BotAPI, message *tgbotapi.Message,
 
 	log.Printf("Менеджер ответил в тикет #%d через кнопку: %s", ticketID, replyText)
 }
-
-
-
-
-
 
 func handleManagerTicketsCallback(bot *tgbotapi.BotAPI, chatID int64) {
 	if len(tickets) == 0 {
@@ -1113,16 +1123,38 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 
 	msg := tgbotapi.NewMessage(chatID, responseText)
 
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Подобрать еще", "select"),
-			tgbotapi.NewInlineKeyboardButtonData("Каталог", "browse"),
-		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonURL("Купить на сайте", product.Link),
-			tgbotapi.NewInlineKeyboardButtonURL("Весь каталог", "https://osteomerch.com/katalog/"),
-		),
-	)
+	// Определяем, является ли пользователь менеджером
+	isManager := isManagerResponse(&tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}})
+	
+	var keyboard tgbotapi.InlineKeyboardMarkup
+	if isManager {
+		// Менеджерское меню
+		keyboard = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("📏 Подобрать еще", "start_survey"),
+				tgbotapi.NewInlineKeyboardButtonData("📚 Каталог", "catalog"),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("👥 Клиенты", "manager_tickets"),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonURL("Купить на сайте", product.Link),
+				tgbotapi.NewInlineKeyboardButtonURL("Весь каталог", "https://osteomerch.com/katalog/"),
+			),
+		)
+	} else {
+		// Обычное меню
+		keyboard = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Подобрать еще", "select"),
+				tgbotapi.NewInlineKeyboardButtonData("Каталог", "browse"),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonURL("Купить на сайте", product.Link),
+				tgbotapi.NewInlineKeyboardButtonURL("Весь каталог", "https://osteomerch.com/katalog/"),
+			),
+		)
+	}
 
 	msg.ReplyMarkup = keyboard
 	if _, err := bot.Send(msg); err != nil {
@@ -1202,11 +1234,28 @@ func showCatalog(bot *tgbotapi.BotAPI, chatID int64) {
 		}
 	}
 
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Подобрать", "select"),
-		),
-	)
+	// Определяем, является ли пользователь менеджером
+	isManager := isManagerResponse(&tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}})
+	
+	var keyboard tgbotapi.InlineKeyboardMarkup
+	if isManager {
+		// Менеджерское меню
+		keyboard = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("📏 Подобрать размер", "start_survey"),
+			),
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("👥 Клиенты", "manager_tickets"),
+			),
+		)
+	} else {
+		// Обычное меню
+		keyboard = tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("Подобрать", "select"),
+			),
+		)
+	}
 
 	finalMsg := tgbotapi.NewMessage(chatID, "Выберите действие:")
 	finalMsg.ReplyMarkup = keyboard

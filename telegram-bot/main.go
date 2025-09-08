@@ -132,7 +132,12 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	switch message.Text {
 	case "/start":
-		sendMainMenu(bot, chatID)
+		// Проверяем, является ли пользователь менеджером
+		if isManagerResponse(bot, message) {
+			sendManagerMenu(bot, chatID)
+		} else {
+			sendMainMenu(bot, chatID)
+		}
 	default:
 		// Проверяем, является ли это ответом менеджера
 		if isManagerResponse(bot, message) {
@@ -176,6 +181,28 @@ func sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) {
 	bot.Send(msg)
 }
 
+func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "👨‍💼 Панель менеджера\n\nВыберите действие:")
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📋 Список тикетов", "manager_tickets"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🆕 Новые тикеты", "manager_new_tickets"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📊 Статистика", "manager_stats"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("❓ Помощь", "manager_help"),
+		),
+	)
+
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
 func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery) {
 	chatID := callback.Message.Chat.ID
 	log.Printf("Получен callback: %s для чата %d", callback.Data, chatID)
@@ -200,6 +227,16 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		handleOversizeCallback(bot, chatID, true)
 	case "oversize_no":
 		handleOversizeCallback(bot, chatID, false)
+	case "manager_tickets":
+		handleManagerTicketsCallback(bot, chatID)
+	case "manager_new_tickets":
+		handleManagerNewTicketsCallback(bot, chatID)
+	case "manager_stats":
+		handleManagerStatsCallback(bot, chatID)
+	case "manager_help":
+		handleManagerHelpCallback(bot, chatID)
+	case "back_to_manager_menu":
+		sendManagerMenu(bot, chatID)
 	default:
 		if strings.HasPrefix(callback.Data, "tee_") {
 			selectedTee := strings.TrimPrefix(callback.Data, "tee_")
@@ -547,7 +584,6 @@ func handleManagerQuestion(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	log.Printf("Отправлено сообщение от пользователя %d в тикет #%d", chatID, ticketID)
 }
 
-
 func isManagerResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message) bool {
 	return managerID != 0 && message.From.ID == managerID
 }
@@ -774,6 +810,117 @@ func handleTicketClose(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	bot.Send(confirmMsg)
 
 	log.Printf("Тикет #%d закрыт менеджером", ticketID)
+}
+
+func handleManagerTicketsCallback(bot *tgbotapi.BotAPI, chatID int64) {
+	if len(tickets) == 0 {
+		msg := tgbotapi.NewMessage(chatID, "📭 Нет активных тикетов")
+		
+		keyboard := tgbotapi.NewInlineKeyboardMarkup(
+			tgbotapi.NewInlineKeyboardRow(
+				tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+			),
+		)
+		msg.ReplyMarkup = keyboard
+		bot.Send(msg)
+		return
+	}
+	
+	var text strings.Builder
+	text.WriteString("🎫 Список тикетов:\n\n")
+	
+	for _, ticket := range tickets {
+		status := "🟢 Открыт"
+		if ticket.Status == "closed" {
+			status = "🔴 Закрыт"
+		}
+		
+		text.WriteString(fmt.Sprintf("#%d %s %s - %s\n", 
+			ticket.ID, 
+			ticket.FirstName, 
+			ticket.LastName, 
+			status))
+	}
+	
+	msg := tgbotapi.NewMessage(chatID, text.String())
+	
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
+func handleManagerNewTicketsCallback(bot *tgbotapi.BotAPI, chatID int64) {
+	openTickets := 0
+	for _, ticket := range tickets {
+		if ticket.Status == "open" {
+			openTickets++
+		}
+	}
+	
+	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("🆕 Новые тикеты: %d\n\nИспользуйте команды:\n• /ticket [ID] - просмотр тикета\n• /reply [ID] [сообщение] - ответить\n• /close [ID] - закрыть", openTickets))
+	
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
+func handleManagerStatsCallback(bot *tgbotapi.BotAPI, chatID int64) {
+	totalTickets := len(tickets)
+	openTickets := 0
+	closedTickets := 0
+	
+	for _, ticket := range tickets {
+		if ticket.Status == "open" {
+			openTickets++
+		} else {
+			closedTickets++
+		}
+	}
+	
+	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("📊 Статистика тикетов:\n\n"+
+		"📈 Всего тикетов: %d\n"+
+		"🟢 Открытых: %d\n"+
+		"🔴 Закрытых: %d\n"+
+		"📅 Последний ID: %d", 
+		totalTickets, openTickets, closedTickets, nextTicketID-1))
+	
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
+func handleManagerHelpCallback(bot *tgbotapi.BotAPI, chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "❓ Помощь менеджеру:\n\n"+
+		"📋 Команды:\n"+
+		"• /tickets - список всех тикетов\n"+
+		"• /ticket [ID] - просмотр тикета\n"+
+		"• /reply [ID] [сообщение] - ответить клиенту\n"+
+		"• /close [ID] - закрыть тикет\n\n"+
+		"🔘 Кнопки:\n"+
+		"• Список тикетов - показать все тикеты\n"+
+		"• Новые тикеты - показать количество открытых\n"+
+		"• Статистика - общая статистика\n"+
+		"• Помощь - эта справка")
+	
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
 func handleOldReplyFormat(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {

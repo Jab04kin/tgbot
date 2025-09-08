@@ -372,36 +372,42 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 }
 
 func calculateSize(height, chestSize int, oversize bool) string {
-	var baseSize string
-
-	if chestSize <= 85 {
-		baseSize = "S"
-	} else if chestSize <= 95 {
-		baseSize = "M"
-	} else if chestSize <= 105 {
-		baseSize = "L"
-	} else if chestSize <= 115 {
-		baseSize = "XL"
+	// Определяем размер по обхвату груди согласно таблице
+	var sizeRange string
+	
+	if chestSize >= 82 && chestSize <= 89 {
+		sizeRange = "XS-S"
+	} else if chestSize >= 90 && chestSize <= 97 {
+		sizeRange = "M-L"
+	} else if chestSize >= 98 && chestSize <= 105 {
+		sizeRange = "XL-2XL"
+	} else if chestSize >= 106 && chestSize <= 113 {
+		sizeRange = "3XL-4XL"
+	} else if chestSize >= 114 && chestSize <= 121 {
+		sizeRange = "5XL-6XL"
+	} else if chestSize < 82 {
+		return "XS-S (размер меньше минимального)"
 	} else {
-		baseSize = "XXL"
+		return "5XL-6XL (размер больше максимального)"
 	}
 
+	// Если запрошен оверсайз, берем больший размер из диапазона
 	if oversize {
-		switch baseSize {
-		case "S":
-			return "M"
-		case "M":
-			return "L"
-		case "L":
-			return "XL"
-		case "XL":
-			return "XXL"
-		default:
-			return "XXL"
+		switch sizeRange {
+		case "XS-S":
+			return "M-L"
+		case "M-L":
+			return "XL-2XL"
+		case "XL-2XL":
+			return "3XL-4XL"
+		case "3XL-4XL":
+			return "5XL-6XL"
+		case "5XL-6XL":
+			return "5XL-6XL (максимальный размер)"
 		}
 	}
 
-	return baseSize
+	return sizeRange
 }
 
 func showCatalog(bot *tgbotapi.BotAPI, chatID int64) {

@@ -113,12 +113,12 @@ func startSelfPing() {
 	// Запускаем в отдельной горутине
 	go func() {
 		pingInterval := 40 * time.Second
-		log.Printf("🔄 Запущен самопинг каждые %v", pingInterval)
+		log.Printf("🔄 Запущен самопинг каждые %v для предотвращения засыпания", pingInterval)
+
+		// Первый пинг через 10 секунд после запуска
+		time.Sleep(10 * time.Second)
 
 		for {
-			// Ждем интервал
-			time.Sleep(pingInterval)
-
 			// Получаем порт из переменной окружения
 			port := os.Getenv("PORT")
 			if port == "" {
@@ -128,19 +128,25 @@ func startSelfPing() {
 			// Формируем URL для health эндпоинта
 			url := fmt.Sprintf("http://localhost:%s/health", port)
 
-			// Делаем HTTP запрос
-			resp, err := http.Get(url)
-			if err != nil {
-				log.Printf("❌ Ошибка самопинга: %v", err)
-				continue
+			// Делаем HTTP запрос с таймаутом
+			client := &http.Client{
+				Timeout: 5 * time.Second,
 			}
-			resp.Body.Close()
 
-			if resp.StatusCode == http.StatusOK {
-				log.Printf("✅ Самопинг успешен: %s", url)
+			resp, err := client.Get(url)
+			if err != nil {
+				log.Printf("❌ Ошибка самопинга: %v (URL: %s)", err, url)
 			} else {
-				log.Printf("⚠️ Самопинг вернул статус: %d", resp.StatusCode)
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					log.Printf("✅ Самопинг успешен: %s", url)
+				} else {
+					log.Printf("⚠️ Самопинг вернул статус: %d для %s", resp.StatusCode, url)
+				}
 			}
+
+			// Ждем интервал до следующего пинга
+			time.Sleep(pingInterval)
 		}
 	}()
 }

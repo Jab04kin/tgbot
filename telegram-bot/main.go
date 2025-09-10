@@ -59,6 +59,9 @@ func main() {
 	// Запускаем HTTP сервер
 	go startHTTPServer()
 
+	// Запускаем самопинг
+	startSelfPing()
+
 	// Бесконечный цикл с восстановлением
 	for {
 		runBot(bot)
@@ -105,6 +108,43 @@ func startHTTPServer() {
 	}
 }
 
+// Функция самопинга для предотвращения спящего режима
+func startSelfPing() {
+	// Запускаем в отдельной горутине
+	go func() {
+		pingInterval := 40 * time.Second
+		log.Printf("🔄 Запущен самопинг каждые %v", pingInterval)
+
+		for {
+			// Ждем интервал
+			time.Sleep(pingInterval)
+
+			// Получаем порт из переменной окружения
+			port := os.Getenv("PORT")
+			if port == "" {
+				port = "8080"
+			}
+
+			// Формируем URL для health эндпоинта
+			url := fmt.Sprintf("http://localhost:%s/health", port)
+
+			// Делаем HTTP запрос
+			resp, err := http.Get(url)
+			if err != nil {
+				log.Printf("❌ Ошибка самопинга: %v", err)
+				continue
+			}
+			resp.Body.Close()
+
+			if resp.StatusCode == http.StatusOK {
+				log.Printf("✅ Самопинг успешен: %s", url)
+			} else {
+				log.Printf("⚠️ Самопинг вернул статус: %d", resp.StatusCode)
+			}
+		}
+	}()
+}
+
 func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	chatID := message.Chat.ID
 
@@ -120,14 +160,14 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		// Проверяем, является ли это ответом менеджера
 		if isManagerResponse(message) {
 			handleManagerResponse(bot, message)
-		return
-	}
+			return
+		}
 
 		// Проверяем, находится ли пользователь в режиме вопроса менеджеру
 		if questionStates[chatID] {
 			handleManagerQuestion(bot, message)
-		return
-	}
+			return
+		}
 
 		// Проверяем, находится ли пользователь в режиме написания сообщения в тикет
 		if messageModeStates[chatID] {
@@ -264,11 +304,11 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		} else if strings.HasPrefix(callback.Data, "client_ticket_dialog_") {
 			ticketIDStr := strings.TrimPrefix(callback.Data, "client_ticket_dialog_")
 			ticketID, err := strconv.Atoi(ticketIDStr)
-	if err != nil {
+			if err != nil {
 				msg := tgbotapi.NewMessage(chatID, "❌ Ошибка ID тикета")
 				bot.Send(msg)
-		return
-	}
+				return
+			}
 			showClientTicketDialog(bot, chatID, ticketID)
 		}
 	}
@@ -376,7 +416,7 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 		}
 
 		state.Height = height
-			state.Step = 3
+		state.Step = 3
 		msg := tgbotapi.NewMessage(chatID, "Обхват груди? (в см)")
 		bot.Send(msg)
 
@@ -450,7 +490,7 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	if state.SelectedTee == "" {
 		log.Printf("Ошибка: SelectedTee пустой для чата %d", chatID)
 		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
-	bot.Send(msg)
+		bot.Send(msg)
 		return
 	}
 
@@ -465,7 +505,7 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	if teeIndex < 0 || teeIndex >= len(products) {
 		log.Printf("Неверный индекс товара: %d, доступно товаров: %d", teeIndex, len(products))
 		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
-	bot.Send(msg)
+		bot.Send(msg)
 		return
 	}
 
@@ -555,7 +595,7 @@ func showClientTicketInterface(bot *tgbotapi.BotAPI, chatID int64) {
 	ticket, found := tickets[ticketID]
 	if !found {
 		msg := tgbotapi.NewMessage(chatID, "❌ Тикет не найден")
-	bot.Send(msg)
+		bot.Send(msg)
 		delete(userTickets, chatID)
 		return
 	}
@@ -634,7 +674,7 @@ func showClientTicketDialog(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 	ticket, exists := tickets[ticketID]
 	if !exists {
 		msg := tgbotapi.NewMessage(chatID, "❌ Тикет не найден")
-	bot.Send(msg)
+		bot.Send(msg)
 		return
 	}
 
@@ -655,8 +695,8 @@ func showClientTicketDialog(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 			msg := tgbotapi.NewMessage(chatID, part)
 			if i == len(parts)-1 {
 				// Кнопка "Назад" только к последнему сообщению
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
+				keyboard := tgbotapi.NewInlineKeyboardMarkup(
+					tgbotapi.NewInlineKeyboardRow(
 						tgbotapi.NewInlineKeyboardButtonData("🔙 К тикету", "back_to_ticket"),
 					),
 				)
@@ -667,7 +707,7 @@ func showClientTicketDialog(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 	} else {
 		msg := tgbotapi.NewMessage(chatID, dialogText)
 		keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardRow(
 				tgbotapi.NewInlineKeyboardButtonData("🔙 К тикету", "back_to_ticket"),
 			),
 		)

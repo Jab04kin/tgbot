@@ -614,10 +614,23 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 
 	product := products[teeIndex]
 
-	size := calculateSize(state.ChestSize, state.Oversize)
+    mark, ru := getSizeInfo(state.ChestSize, state.Oversize)
 
-	responseText := fmt.Sprintf("Вам подойдут следующие размеры модели:\n\n%s - размер %s",
-		product.Name, size)
+    heightInfo := ""
+    if state.Height > 0 {
+        var hRange string
+        if state.Height >= 158 && state.Height <= 175 {
+            hRange = "158-175"
+        } else if state.Height >= 176 && state.Height <= 188 {
+            hRange = "176-188"
+        }
+        if hRange != "" {
+            heightInfo = fmt.Sprintf("\nРост: %s см", hRange)
+        }
+    }
+
+    responseText := fmt.Sprintf("Вам подойдут следующие размеры модели:\n\n%s\nМаркировка: %s\nРоссийский размер: %s%s",
+        product.Name, mark, ru, heightInfo)
 
 	msg := tgbotapi.NewMessage(chatID, responseText)
 
@@ -631,12 +644,56 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 			tgbotapi.NewInlineKeyboardButtonURL("Купить на сайте", product.Link),
 			tgbotapi.NewInlineKeyboardButtonURL("Весь каталог", "https://osteomerch.com/katalog/"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Связаться с менеджером", "contact_manager"),
+		),
 	)
 
 	msg.ReplyMarkup = keyboard
 	if _, err := bot.Send(msg); err != nil {
 		log.Printf("Ошибка отправки рекомендаций: %v", err)
 	}
+}
+
+// getSizeInfo возвращает маркировку и российский размер по таблице, учитывая оверсайз
+func getSizeInfo(chestSize int, oversize bool) (string, string) {
+    type row struct{ mark, ru string }
+    table := []struct{
+        min int
+        max int
+        size row
+    }{
+        {82, 89, row{"XS-S", "42-44"}},
+        {90, 97, row{"M-L", "46-48"}},
+        {98, 105, row{"XL-2XL", "50-52"}},
+        {106, 113, row{"3XL-4XL", "54-56"}},
+        {114, 121, row{"5XL-6XL", "58-60"}},
+    }
+    idx := -1
+    for i, r := range table {
+        if chestSize >= r.min && chestSize <= r.max {
+            idx = i
+            break
+    	}
+    }
+    if idx == -1 {
+        if chestSize < table[0].min {
+            idx = 0
+        } else if chestSize > table[len(table)-1].max {
+            idx = len(table) - 1
+        }
+    }
+    if oversize && idx < len(table)-1 {
+        idx++
+    }
+    return table[idx].size.mark, table[idx].size.ru
+}
+
+// isWithinBusinessHours проверяет, попадает ли текущее локальное время в 09:00-20:00
+func isWithinBusinessHours() bool {
+    now := time.Now()
+    h := now.Hour()
+    return h >= 9 && h < 20
 }
 
 // Функция для показа каталога товаров
@@ -669,10 +726,11 @@ func showCatalog(bot *tgbotapi.BotAPI, chatID int64) {
 		}
 	}
 
-	// Обычное меню
+	// Меню после каталога: подбор и связь с менеджером
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Подобрать", "select"),
+			tgbotapi.NewInlineKeyboardButtonData("Связаться с менеджером", "contact_manager"),
 		),
 	)
 
@@ -916,8 +974,12 @@ func handleClientTicketMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) 
 	// Выключаем режим написания сообщения
 	messageModeStates[chatID] = false
 
-	// Подтверждаем клиенту
-	confirmMsg := tgbotapi.NewMessage(chatID, "✅ Сообщение отправлено менеджеру!")
+    // Подтверждаем клиенту + уведомление о времени ответа
+    confirmText := "✅ Сообщение отправлено менеджеру!"
+    if !isWithinBusinessHours() {
+        confirmText += "\n\n⏰ Менеджер отвечает с 09:00 до 20:00. Он свяжется с вами в это время."
+    }
+    confirmMsg := tgbotapi.NewMessage(chatID, confirmText)
 	bot.Send(confirmMsg)
 
 	log.Printf("Сообщение от клиента %d добавлено в тикет #%d", chatID, ticketID)

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -611,72 +610,9 @@ func openTicketFromButton(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 	log.Printf("Тикет #%d открыт менеджером через кнопку", ticketID)
 }
 
-func showTicketsWithButtons(bot *tgbotapi.BotAPI, chatID int64, ticketsToShow map[int]*Ticket, title string) {
-	var text strings.Builder
-	text.WriteString(fmt.Sprintf("%s (%d):\n\n", title, len(ticketsToShow)))
-
-	// Сортируем тикеты по ID
-	var ticketIDs []int
-	for id := range ticketsToShow {
-		ticketIDs = append(ticketIDs, id)
-	}
-	sort.Ints(ticketIDs)
-
-	// Показываем первые 10 тикетов
-	limit := 10
-	if len(ticketIDs) > limit {
-		limit = len(ticketIDs)
-	}
-
-	for i := 0; i < limit && i < len(ticketIDs); i++ {
-		ticket := ticketsToShow[ticketIDs[i]]
-		status := "🟢"
-		if ticket.Status == "closed" {
-			status = "🔴"
-		}
-
-		text.WriteString(fmt.Sprintf("%s #%d %s %s\n",
-			status,
-			ticket.ID,
-			ticket.FirstName,
-			ticket.LastName))
-	}
-
-	if len(ticketIDs) > 10 {
-		text.WriteString(fmt.Sprintf("\n... и еще %d тикетов", len(ticketIDs)-10))
-	}
-
-	msg := tgbotapi.NewMessage(chatID, text.String())
-
-	// Создаем кнопки для тикетов (максимум 5 в ряд)
-	var keyboard [][]tgbotapi.InlineKeyboardButton
-	for i := 0; i < limit && i < len(ticketIDs); i++ {
-		ticketID := ticketIDs[i]
-		ticket := ticketsToShow[ticketID]
-
-		buttonText := fmt.Sprintf("#%d %s", ticketID, ticket.FirstName)
-		if len(buttonText) > 20 {
-			buttonText = fmt.Sprintf("#%d", ticketID)
-		}
-
-		button := tgbotapi.NewInlineKeyboardButtonData(buttonText, fmt.Sprintf("ticket_view_%d", ticketID))
-
-		// Добавляем кнопку в ряд
-		if len(keyboard) == 0 || len(keyboard[len(keyboard)-1]) >= 2 {
-			keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{button})
-		} else {
-			keyboard[len(keyboard)-1] = append(keyboard[len(keyboard)-1], button)
-		}
-	}
-
-	// Добавляем кнопку "Назад"
-	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
-		tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
-	})
-
-	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
-	bot.Send(msg)
-}
+// showTicketsWithButtons — legacy (заменено на showTicketsWithFilters). Оставлено для совместимости.
+//nolint:unused
+func showTicketsWithButtons(bot *tgbotapi.BotAPI, chatID int64, ticketsToShow map[int]*Ticket, title string) {}
 
 func handleTicketButtonCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData string) {
 	// Обрабатываем кнопки тикетов

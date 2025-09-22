@@ -125,12 +125,12 @@ func handleManagerExportMenu(bot *tgbotapi.BotAPI, chatID int64) {
 var exportTicketIDState = make(map[int64]bool) // chatID -> ждем ID тикета для экспорта
 
 func clearChatStates(chatID int64) {
-    delete(userStates, chatID)
-    delete(questionStates, chatID)
-    delete(messageModeStates, chatID)
-    delete(searchState, chatID)
-    delete(exportTicketIDState, chatID)
-    delete(userTickets, chatID)
+	delete(userStates, chatID)
+	delete(questionStates, chatID)
+	delete(messageModeStates, chatID)
+	delete(searchState, chatID)
+	delete(exportTicketIDState, chatID)
+	delete(userTickets, chatID)
 }
 
 func isManagerResponse(message *tgbotapi.Message) bool {
@@ -187,8 +187,8 @@ var adminActionState = make(map[int64]string) // chatID -> "add_manager" | "remo
 var searchState = make(map[int64]bool)        // chatID -> true если в режиме поиска тикета
 
 func showAdminPanel(bot *tgbotapi.BotAPI, chatID int64) {
-    clearChatStates(chatID)
-    msg := tgbotapi.NewMessage(chatID, "⚙️ Админ-панель")
+	clearChatStates(chatID)
+	msg := tgbotapi.NewMessage(chatID, "⚙️ Админ-панель")
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👥 Список менеджеров", "admin_list_managers"),
@@ -199,9 +199,9 @@ func showAdminPanel(bot *tgbotapi.BotAPI, chatID int64) {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("➖ Снять менеджера", "admin_remove_manager"),
 		),
-        tgbotapi.NewInlineKeyboardRow(
-            tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
-        ),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+		),
 	)
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)

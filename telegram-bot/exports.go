@@ -49,12 +49,13 @@ func exportUsersExcel() (*bytes.Buffer, error) {
 		if t.LastName != "" {
 			ua.LastName = t.LastName
 		}
-		ua.TicketsCount++
-		if t.Status == "open" {
-			ua.OpenTickets++
-		} else if t.Status == "closed" {
-			ua.ClosedTickets++
-		}
+        ua.TicketsCount++
+        switch t.Status {
+        case "open":
+            ua.OpenTickets++
+        case "closed":
+            ua.ClosedTickets++
+        }
 		if t.LastMessage.After(ua.LastMessageAt) {
 			ua.LastMessageAt = t.LastMessage
 		}

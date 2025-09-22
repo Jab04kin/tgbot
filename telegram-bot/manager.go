@@ -23,16 +23,16 @@ func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 
 	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👨‍💼 Добро пожаловать, менеджер!\n\n📊 Тикеты: 🟢 %d открытых | 🔴 %d закрытых\n\nВыберите действие:", openTickets, closedTickets))
 
-    keyboard := tgbotapi.NewInlineKeyboardMarkup(
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📚 Каталог", "catalog"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👥 Клиенты", "manager_tickets"),
 		),
-        tgbotapi.NewInlineKeyboardRow(
-            tgbotapi.NewInlineKeyboardButtonData("📊 Статистика", "manager_export_menu"),
-        ),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("📊 Статистика", "manager_export_menu"),
+		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❓ Помощь", "help"),
 		),
@@ -103,26 +103,35 @@ func handleManagerHelpCallback(bot *tgbotapi.BotAPI, chatID int64) {
 
 // Меню экспорта статистики
 func handleManagerExportMenu(bot *tgbotapi.BotAPI, chatID int64) {
-    msg := tgbotapi.NewMessage(chatID, "📊 Экспорт статистики в Excel:\n\nВыберите, что выгрузить:")
-    keyboard := tgbotapi.NewInlineKeyboardMarkup(
-        tgbotapi.NewInlineKeyboardRow(
-            tgbotapi.NewInlineKeyboardButtonData("1) Пользователи", "manager_export_users"),
-        ),
-        tgbotapi.NewInlineKeyboardRow(
-            tgbotapi.NewInlineKeyboardButtonData("2) Все тикеты", "manager_export_tickets"),
-        ),
-        tgbotapi.NewInlineKeyboardRow(
-            tgbotapi.NewInlineKeyboardButtonData("3) Тикет по ID", "manager_export_ticket_by_id"),
-        ),
-        tgbotapi.NewInlineKeyboardRow(
-            tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
-        ),
-    )
-    msg.ReplyMarkup = keyboard
-    bot.Send(msg)
+	msg := tgbotapi.NewMessage(chatID, "📊 Экспорт статистики в Excel:\n\nВыберите, что выгрузить:")
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("1) Пользователи", "manager_export_users"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("2) Все тикеты", "manager_export_tickets"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("3) Тикет по ID", "manager_export_ticket_by_id"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
 }
 
 var exportTicketIDState = make(map[int64]bool) // chatID -> ждем ID тикета для экспорта
+
+func clearChatStates(chatID int64) {
+    delete(userStates, chatID)
+    delete(questionStates, chatID)
+    delete(messageModeStates, chatID)
+    delete(searchState, chatID)
+    delete(exportTicketIDState, chatID)
+    delete(userTickets, chatID)
+}
 
 func isManagerResponse(message *tgbotapi.Message) bool {
 	return isManagerUser(message.From)
@@ -178,7 +187,8 @@ var adminActionState = make(map[int64]string) // chatID -> "add_manager" | "remo
 var searchState = make(map[int64]bool)        // chatID -> true если в режиме поиска тикета
 
 func showAdminPanel(bot *tgbotapi.BotAPI, chatID int64) {
-	msg := tgbotapi.NewMessage(chatID, "⚙️ Админ-панель")
+    clearChatStates(chatID)
+    msg := tgbotapi.NewMessage(chatID, "⚙️ Админ-панель")
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👥 Список менеджеров", "admin_list_managers"),
@@ -189,9 +199,9 @@ func showAdminPanel(bot *tgbotapi.BotAPI, chatID int64) {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("➖ Снять менеджера", "admin_remove_manager"),
 		),
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_menu"),
-		),
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+        ),
 	)
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)
@@ -500,32 +510,32 @@ func handleTicketSearchInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) bo
 
 // handleExportTicketIDInput обрабатывает ввод ID тикета для экспорта
 func handleExportTicketIDInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) bool {
-    chatID := message.Chat.ID
-    if !exportTicketIDState[chatID] {
-        return false
-    }
-    if message.Text == "/cancel" {
-        delete(exportTicketIDState, chatID)
-        handleManagerExportMenu(bot, chatID)
-        return true
-    }
-    id, err := strconv.Atoi(strings.TrimSpace(message.Text))
-    if err != nil {
-        bot.Send(tgbotapi.NewMessage(chatID, "❌ Неверный формат. Введите числовой ID тикета или /cancel"))
-        return true
-    }
-    if _, ok := tickets[id]; !ok {
-        bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Тикет #%d не найден", id)))
-        delete(exportTicketIDState, chatID)
-        return true
-    }
-    if buf, err := exportSingleTicketExcel(id); err == nil {
-        sendExcelBuffer(bot, chatID, fmt.Sprintf("ticket_%d.xlsx", id), buf)
-    } else {
-        bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка формирования файла"))
-    }
-    delete(exportTicketIDState, chatID)
-    return true
+	chatID := message.Chat.ID
+	if !exportTicketIDState[chatID] {
+		return false
+	}
+	if message.Text == "/cancel" {
+		delete(exportTicketIDState, chatID)
+		handleManagerExportMenu(bot, chatID)
+		return true
+	}
+	id, err := strconv.Atoi(strings.TrimSpace(message.Text))
+	if err != nil {
+		bot.Send(tgbotapi.NewMessage(chatID, "❌ Неверный формат. Введите числовой ID тикета или /cancel"))
+		return true
+	}
+	if _, ok := tickets[id]; !ok {
+		bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Тикет #%d не найден", id)))
+		delete(exportTicketIDState, chatID)
+		return true
+	}
+	if buf, err := exportSingleTicketExcel(id); err == nil {
+		sendExcelBuffer(bot, chatID, fmt.Sprintf("ticket_%d.xlsx", id), buf)
+	} else {
+		bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка формирования файла"))
+	}
+	delete(exportTicketIDState, chatID)
+	return true
 }
 
 // notifyNewUserWithAssign отправляет админам уведомление о новом пользователе с кнопкой "Назначить менеджером"

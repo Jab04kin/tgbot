@@ -160,6 +160,8 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	switch message.Text {
 	case "/start":
+		// Сброс всех состояний для чистого входа
+		clearChatStates(chatID)
 		// Стартовая точка: показ админ-панели админу
 		// Проверяем, является ли пользователь менеджером
 		if isManagerResponse(message) {
@@ -286,8 +288,13 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		log.Printf("Показ каталога для чата %d", chatID)
 		showCatalog(bot, chatID)
 	case "back_to_menu":
+		// Переназначаем поведение для менеджеров: возвращаем в менеджерское меню
 		log.Printf("Возврат в главное меню для чата %d", chatID)
-		sendMainMenu(bot, chatID)
+		if isManagerUser(callback.From) {
+			sendManagerMenu(bot, chatID)
+		} else {
+			sendMainMenu(bot, chatID)
+		}
 	case "oversize_yes":
 		handleOversizeCallback(bot, chatID, true)
 	case "oversize_no":

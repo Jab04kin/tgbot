@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xuri/excelize/v2"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/xuri/excelize/v2"
 )
 
 // exportUsersExcel формирует Excel со сводной информацией по пользователям (по данным тикетов)
@@ -49,13 +49,13 @@ func exportUsersExcel() (*bytes.Buffer, error) {
 		if t.LastName != "" {
 			ua.LastName = t.LastName
 		}
-        ua.TicketsCount++
-        switch t.Status {
-        case "open":
-            ua.OpenTickets++
-        case "closed":
-            ua.ClosedTickets++
-        }
+		ua.TicketsCount++
+		switch t.Status {
+		case "open":
+			ua.OpenTickets++
+		case "closed":
+			ua.ClosedTickets++
+		}
 		if t.LastMessage.After(ua.LastMessageAt) {
 			ua.LastMessageAt = t.LastMessage
 		}
@@ -92,7 +92,7 @@ func exportAllTicketsExcel() (*bytes.Buffer, error) {
 	f := excelize.NewFile()
 	sheet := f.GetSheetName(0)
 
-	headers := []string{"TicketID", "Status", "UserID", "Username", "FirstName", "LastName", "Height", "Chest", "Oversize", "Recommended", "Question", "CreatedAt", "LastMessage", "MessagesCount"}
+	headers := []string{"TicketID", "Status", "UserID", "Username", "FirstName", "LastName", "Height", "Chest", "Oversize", "Recommended", "Question", "CreatedAt", "LastMessage"}
 	for i, h := range headers {
 		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
 		f.SetCellValue(sheet, cell, h)
@@ -121,7 +121,61 @@ func exportAllTicketsExcel() (*bytes.Buffer, error) {
 		f.SetCellValue(sheet, fmt.Sprintf("K%d", rowIdx), t.Question)
 		f.SetCellValue(sheet, fmt.Sprintf("L%d", rowIdx), t.CreatedAt.Format("2006-01-02 15:04:05"))
 		f.SetCellValue(sheet, fmt.Sprintf("M%d", rowIdx), t.LastMessage.Format("2006-01-02 15:04:05"))
-		f.SetCellValue(sheet, fmt.Sprintf("N%d", rowIdx), len(t.Messages))
+	}
+
+	// Настроим ширины и шапку
+	_ = f.SetColWidth(sheet, "A", "A", 10)
+	_ = f.SetColWidth(sheet, "B", "B", 10)
+	_ = f.SetColWidth(sheet, "C", "C", 14)
+	_ = f.SetColWidth(sheet, "D", "F", 18)
+	_ = f.SetColWidth(sheet, "G", "H", 10)
+	_ = f.SetColWidth(sheet, "I", "K", 18)
+	_ = f.SetColWidth(sheet, "L", "M", 20)
+	_ = f.SetPanes(sheet, &excelize.Panes{Freeze: true, Split: true, XSplit: 0, YSplit: 1})
+
+	// Лист сообщений по всем тикетам
+	msgSheet := "Messages"
+	f.NewSheet(msgSheet)
+	msgHeaders := []string{"TicketID", "#", "SenderID", "FromManager", "Time", "Text"}
+	for i, h := range msgHeaders {
+		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+		f.SetCellValue(msgSheet, cell, h)
+	}
+	r := 2
+	msgIDs := make([]int, 0, len(tickets))
+	for id := range tickets {
+		msgIDs = append(msgIDs, id)
+	}
+	sort.Ints(msgIDs)
+	for _, id := range msgIDs {
+		t := tickets[id]
+		for _, m := range t.Messages {
+			f.SetCellValue(msgSheet, fmt.Sprintf("A%d", r), t.ID)
+			f.SetCellValue(msgSheet, fmt.Sprintf("B%d", r), m.ID)
+			f.SetCellValue(msgSheet, fmt.Sprintf("C%d", r), m.SenderID)
+			f.SetCellValue(msgSheet, fmt.Sprintf("D%d", r), m.IsFromManager)
+			f.SetCellValue(msgSheet, fmt.Sprintf("E%d", r), m.Time.Format("2006-01-02 15:04:05"))
+			f.SetCellValue(msgSheet, fmt.Sprintf("F%d", r), strings.ReplaceAll(m.Text, "\n", " "))
+			r++
+		}
+	}
+	_ = f.SetColWidth(msgSheet, "A", "E", 14)
+	_ = f.SetColWidth(msgSheet, "F", "F", 80)
+	_ = f.SetPanes(msgSheet, &excelize.Panes{Freeze: true, Split: true, XSplit: 0, YSplit: 1})
+
+	// Стили: перенос текста для колонки F (Text) и жирная шапка
+	wrapStyle, _ := f.NewStyle(&excelize.Style{Alignment: &excelize.Alignment{WrapText: true, Vertical: "top"}})
+	headerStyle, _ := f.NewStyle(&excelize.Style{Font: &excelize.Font{Bold: true}})
+	// применяем к шапкам обоих листов
+	_ = f.SetCellStyle(sheet, "A1", "M1", headerStyle)
+	_ = f.SetCellStyle(msgSheet, "A1", "F1", headerStyle)
+	// применяем перенос для всех ячеек текста F2:F{r-1}
+	if r > 2 {
+		_ = f.SetCellStyle(msgSheet, "F2", fmt.Sprintf("F%d", r-1), wrapStyle)
+		// увеличим высоту строк для читабельности
+		for i := 2; i < r; i++ {
+			_ = f.SetRowHeight(msgSheet, i, 28)
+		}
 	}
 
 	buf, err := f.WriteToBuffer()
@@ -194,5 +248,3 @@ func sendExcelBuffer(bot *tgbotapi.BotAPI, chatID int64, filename string, buf *b
 	doc := tgbotapi.NewDocument(chatID, fileBytes)
 	bot.Send(doc)
 }
-
-

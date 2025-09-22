@@ -390,15 +390,8 @@ func showTicketsWithFilters(bot *tgbotapi.BotAPI, chatID int64, statusFilter ...
 			// Время создания
 			timeStr := ticket.CreatedAt.Format("02.01 15:04")
 
-			// Количество сообщений
-			msgCount := len(ticket.Messages)
-			msgInfo := ""
-			if msgCount > 0 {
-				msgInfo = fmt.Sprintf(" | 💬 %d", msgCount)
-			}
-
-			text.WriteString(fmt.Sprintf("%s #%d %s%s\n🆔 %d | %s%s\n\n",
-				status, ticket.ID, name, username, ticket.UserID, timeStr, msgInfo))
+			text.WriteString(fmt.Sprintf("%s #%d %s%s\n🆔 %d | %s\n\n",
+				status, ticket.ID, name, username, ticket.UserID, timeStr))
 		}
 
 		if len(filteredTickets) > 10 {

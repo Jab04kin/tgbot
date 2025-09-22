@@ -106,20 +106,26 @@ func createTicketAndAskQuestion(bot *tgbotapi.BotAPI, chatID int64, recommendedS
 	if exists {
 		// Есть данные подбора размера
 		ticket = &Ticket{
-			ID:              nextTicketID,
-			UserID:          chatID,
-			Username:        "", // будет заполнено при первом сообщении
-			FirstName:       "", // будет заполнено при первом сообщении
-			LastName:        "", // будет заполнено при первом сообщении
-			Height:          state.Height,
-			ChestSize:       state.ChestSize,
-			Oversize:        state.Oversize,
-			RecommendedSize: recommendedSize,
-			Question:        "",
-			Status:          "open",
-			CreatedAt:       now,
-			LastMessage:     now,
-			Messages:        []Message{},
+			ID:        nextTicketID,
+			UserID:    chatID,
+			Username:  "", // будет заполнено при первом сообщении
+			FirstName: "", // будет заполнено при первом сообщении
+			LastName:  "", // будет заполнено при первом сообщении
+			Height:    state.Height,
+			ChestSize: state.ChestSize,
+			Oversize:  state.Oversize,
+			RecommendedSize: func() string {
+				if recommendedSize != "" {
+					return recommendedSize
+				}
+				mark, _ := getSizeInfo(state.ChestSize, state.Oversize)
+				return mark
+			}(),
+			Question:    "",
+			Status:      "open",
+			CreatedAt:   now,
+			LastMessage: now,
+			Messages:    []Message{},
 		}
 	} else {
 		// Нет данных подбора размера - создаем тикет без них

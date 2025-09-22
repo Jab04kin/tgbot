@@ -420,48 +420,7 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 }
 
 // Функция для расчета размера одежды
-func calculateSize(chestSize int, oversize bool) string {
-	// Определяем размер по обхвату груди согласно таблице
-	var sizeRange string
-
-	if chestSize >= 70 && chestSize <= 89 {
-		sizeRange = "XS-S"
-	} else if chestSize >= 90 && chestSize <= 97 {
-		sizeRange = "M-L"
-	} else if chestSize >= 98 && chestSize <= 105 {
-		sizeRange = "XL-2XL"
-	} else if chestSize >= 106 && chestSize <= 113 {
-		sizeRange = "3XL-4XL"
-	} else if chestSize >= 114 && chestSize <= 121 {
-		sizeRange = "5XL-6XL"
-	} else if chestSize >= 122 && chestSize <= 130 {
-		sizeRange = "7XL-8XL"
-	} else if chestSize < 70 {
-		return "XS-S (размер меньше минимального)"
-	} else {
-		return "7XL-8XL (размер больше максимального)"
-	}
-
-	// Если запрошен оверсайз, берем больший размер из диапазона
-	if oversize {
-		switch sizeRange {
-		case "XS-S":
-			return "M-L"
-		case "M-L":
-			return "XL-2XL"
-		case "XL-2XL":
-			return "3XL-4XL"
-		case "3XL-4XL":
-			return "5XL-6XL"
-		case "5XL-6XL":
-			return "7XL-8XL"
-		case "7XL-8XL":
-			return "7XL-8XL (максимальный размер)"
-		}
-	}
-
-	return sizeRange
-}
+// calculateSize больше не используется (заменено на getSizeInfo)
 
 // Функция для запуска опроса о товарах
 func startSurvey(bot *tgbotapi.BotAPI, chatID int64) {
@@ -538,8 +497,18 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 		}
 
 		state.ChestSize = chestSize
-		state.Step = 4
-		askOversizeQuestion(bot, chatID)
+		// Оверсайз доступен только для модели "Крылатые Фразы" (индекс 0)
+		selectedIdx, _ := strconv.Atoi(state.SelectedTee)
+		if selectedIdx == 0 { // разрешаем оверсайз
+			state.Step = 4
+			askOversizeQuestion(bot, chatID)
+			return
+		}
+		// Для других моделей оверсайз недоступен: принудительно false и сразу показываем рекомендации
+		state.Oversize = false
+		showRecommendations(bot, chatID, state)
+		delete(userStates, chatID)
+		return
 
 	case 4:
 		response := strings.ToLower(message.Text)
@@ -614,23 +583,26 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 
 	product := products[teeIndex]
 
-    mark, ru := getSizeInfo(state.ChestSize, state.Oversize)
+	// Оверсайз только для модели "Крылатые Фразы" (индекс 0)
+	selectedIdx, _ := strconv.Atoi(state.SelectedTee)
+	oversize := state.Oversize && selectedIdx == 0
+	mark, ru := getSizeInfo(state.ChestSize, oversize)
 
-    heightInfo := ""
-    if state.Height > 0 {
-        var hRange string
-        if state.Height >= 158 && state.Height <= 175 {
-            hRange = "158-175"
-        } else if state.Height >= 176 && state.Height <= 188 {
-            hRange = "176-188"
-        }
-        if hRange != "" {
-            heightInfo = fmt.Sprintf("\nРост: %s см", hRange)
-        }
-    }
+	heightInfo := ""
+	if state.Height > 0 {
+		var hRange string
+		if state.Height >= 158 && state.Height <= 175 {
+			hRange = "158-175"
+		} else if state.Height >= 176 && state.Height <= 188 {
+			hRange = "176-188"
+		}
+		if hRange != "" {
+			heightInfo = fmt.Sprintf("\nРост: %s см", hRange)
+		}
+	}
 
-    responseText := fmt.Sprintf("Вам подойдут следующие размеры модели:\n\n%s\nМаркировка: %s\nРоссийский размер: %s%s",
-        product.Name, mark, ru, heightInfo)
+	responseText := fmt.Sprintf("Вам подойдут следующие размеры модели:\n\n%s\nМаркировка: %s\nРоссийский размер: %s%s",
+		product.Name, mark, ru, heightInfo)
 
 	msg := tgbotapi.NewMessage(chatID, responseText)
 
@@ -653,47 +625,60 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	if _, err := bot.Send(msg); err != nil {
 		log.Printf("Ошибка отправки рекомендаций: %v", err)
 	}
+
+	// Пробуем записать данные в активный тикет пользователя (если есть)
+	if ticketID, exists := userTickets[chatID]; exists {
+		if t, ok := tickets[ticketID]; ok {
+			t.Height = state.Height
+			t.ChestSize = state.ChestSize
+			t.Oversize = oversize
+			mark, _ := getSizeInfo(state.ChestSize, oversize)
+			t.RecommendedSize = mark
+			t.LastMessage = time.Now()
+			saveTickets()
+		}
+	}
 }
 
 // getSizeInfo возвращает маркировку и российский размер по таблице, учитывая оверсайз
 func getSizeInfo(chestSize int, oversize bool) (string, string) {
-    type row struct{ mark, ru string }
-    table := []struct{
-        min int
-        max int
-        size row
-    }{
-        {82, 89, row{"XS-S", "42-44"}},
-        {90, 97, row{"M-L", "46-48"}},
-        {98, 105, row{"XL-2XL", "50-52"}},
-        {106, 113, row{"3XL-4XL", "54-56"}},
-        {114, 121, row{"5XL-6XL", "58-60"}},
-    }
-    idx := -1
-    for i, r := range table {
-        if chestSize >= r.min && chestSize <= r.max {
-            idx = i
-            break
-    	}
-    }
-    if idx == -1 {
-        if chestSize < table[0].min {
-            idx = 0
-        } else if chestSize > table[len(table)-1].max {
-            idx = len(table) - 1
-        }
-    }
-    if oversize && idx < len(table)-1 {
-        idx++
-    }
-    return table[idx].size.mark, table[idx].size.ru
+	type row struct{ mark, ru string }
+	table := []struct {
+		min  int
+		max  int
+		size row
+	}{
+		{82, 89, row{"XS-S", "42-44"}},
+		{90, 97, row{"M-L", "46-48"}},
+		{98, 105, row{"XL-2XL", "50-52"}},
+		{106, 113, row{"3XL-4XL", "54-56"}},
+		{114, 121, row{"5XL-6XL", "58-60"}},
+	}
+	idx := -1
+	for i, r := range table {
+		if chestSize >= r.min && chestSize <= r.max {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		if chestSize < table[0].min {
+			idx = 0
+		} else if chestSize > table[len(table)-1].max {
+			idx = len(table) - 1
+		}
+	}
+	if oversize && idx < len(table)-1 {
+		idx++
+	}
+	return table[idx].size.mark, table[idx].size.ru
 }
 
 // isWithinBusinessHours проверяет, попадает ли текущее локальное время в 09:00-20:00
 func isWithinBusinessHours() bool {
-    now := time.Now()
-    h := now.Hour()
-    return h >= 9 && h < 20
+	now := time.Now()
+	h := now.Hour()
+	return h >= 9 && h < 20
 }
 
 // Функция для показа каталога товаров
@@ -974,12 +959,12 @@ func handleClientTicketMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) 
 	// Выключаем режим написания сообщения
 	messageModeStates[chatID] = false
 
-    // Подтверждаем клиенту + уведомление о времени ответа
-    confirmText := "✅ Сообщение отправлено менеджеру!"
-    if !isWithinBusinessHours() {
-        confirmText += "\n\n⏰ Менеджер отвечает с 09:00 до 20:00. Он свяжется с вами в это время."
-    }
-    confirmMsg := tgbotapi.NewMessage(chatID, confirmText)
+	// Подтверждаем клиенту + уведомление о времени ответа
+	confirmText := "✅ Сообщение отправлено менеджеру!"
+	if !isWithinBusinessHours() {
+		confirmText += "\n\n⏰ Менеджер отвечает с 09:00 до 20:00. Он свяжется с вами в это время."
+	}
+	confirmMsg := tgbotapi.NewMessage(chatID, confirmText)
 	bot.Send(confirmMsg)
 
 	log.Printf("Сообщение от клиента %d добавлено в тикет #%d", chatID, ticketID)

@@ -610,9 +610,7 @@ func openTicketFromButton(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 	log.Printf("Тикет #%d открыт менеджером через кнопку", ticketID)
 }
 
-// showTicketsWithButtons — legacy (заменено на showTicketsWithFilters). Оставлено для совместимости.
-//nolint:unused
-func showTicketsWithButtons(bot *tgbotapi.BotAPI, chatID int64, ticketsToShow map[int]*Ticket, title string) {}
+// showTicketsWithButtons — legacy (заменено на showTicketsWithFilters). Удалено.
 
 func handleTicketButtonCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData string) {
 	// Обрабатываем кнопки тикетов

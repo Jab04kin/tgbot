@@ -160,8 +160,12 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	switch message.Text {
 	case "/start":
-		// Сброс всех состояний для чистого входа
-		clearChatStates(chatID)
+		// Сброс состояний: у менеджера — полностью, у клиента — только клиентские
+		if isManagerUser(message.From) {
+			clearManagerStates(chatID)
+		} else {
+			clearClientStates(chatID)
+		}
 		// Стартовая точка: показ админ-панели админу
 		// Проверяем, является ли пользователь менеджером
 		if isManagerResponse(message) {

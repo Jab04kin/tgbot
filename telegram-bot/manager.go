@@ -124,12 +124,18 @@ func handleManagerExportMenu(bot *tgbotapi.BotAPI, chatID int64) {
 
 var exportTicketIDState = make(map[int64]bool) // chatID -> ждем ID тикета для экспорта
 
-func clearChatStates(chatID int64) {
+// Очищает состояния клиента (не трогает привязку userTickets)
+func clearClientStates(chatID int64) {
 	delete(userStates, chatID)
 	delete(questionStates, chatID)
 	delete(messageModeStates, chatID)
 	delete(searchState, chatID)
 	delete(exportTicketIDState, chatID)
+}
+
+// Очищает состояния менеджера и разрывает режим ответа (удаляет userTickets для чата менеджера)
+func clearManagerStates(chatID int64) {
+	clearClientStates(chatID)
 	delete(userTickets, chatID)
 }
 
@@ -187,7 +193,7 @@ var adminActionState = make(map[int64]string) // chatID -> "add_manager" | "remo
 var searchState = make(map[int64]bool)        // chatID -> true если в режиме поиска тикета
 
 func showAdminPanel(bot *tgbotapi.BotAPI, chatID int64) {
-	clearChatStates(chatID)
+	clearManagerStates(chatID)
 	msg := tgbotapi.NewMessage(chatID, "⚙️ Админ-панель")
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(

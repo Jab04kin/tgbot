@@ -180,6 +180,12 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		// Уведомление админам/менеджерам о пользователе и его ID
 		notifyNewUserWithAssign(bot, message.From)
 	default:
+		// Обработка поиска тикетов для менеджеров
+		if isManagerUser(message.From) {
+			if handleTicketSearchInput(bot, message) || handleExportTicketIDInput(bot, message) {
+				return
+			}
+		}
 		// Обработка ввода для админ-операций, если активен режим
 		if isAdminUser(message.From) || strings.EqualFold(message.From.UserName, "Shpinatyamba") {
 			if handleAdminInput(bot, message) {
@@ -296,6 +302,32 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		handleManagerStatsCallback(bot, chatID)
 	case "manager_help":
 		handleManagerHelpCallback(bot, chatID)
+	case "manager_export_menu":
+		if isManagerUser(callback.From) {
+			handleManagerExportMenu(bot, chatID)
+		}
+	case "manager_export_users":
+		if isManagerUser(callback.From) {
+			if buf, err := exportUsersExcel(); err == nil {
+				sendExcelBuffer(bot, chatID, "users.xlsx", buf)
+			} else {
+				bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка формирования файла"))
+			}
+		}
+	case "manager_export_tickets":
+		if isManagerUser(callback.From) {
+			if buf, err := exportAllTicketsExcel(); err == nil {
+				sendExcelBuffer(bot, chatID, "tickets.xlsx", buf)
+			} else {
+				bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка формирования файла"))
+			}
+		}
+	case "manager_export_ticket_by_id":
+		if isManagerUser(callback.From) {
+			exportTicketIDState[chatID] = true
+			msg := tgbotapi.NewMessage(chatID, "Введите номер тикета для экспорта в Excel (или /cancel)")
+			bot.Send(msg)
+		}
 	case "back_to_manager_menu":
 		sendManagerMenu(bot, chatID)
 	case "start_survey":
@@ -325,6 +357,10 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 	case "admin_remove_manager":
 		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
 			promptRemoveManager(bot, chatID)
+		}
+	case "manager_search_ticket":
+		if isManagerUser(callback.From) {
+			handleManagerSearchTicket(bot, chatID)
 		}
 	case "contact_manager":
 		log.Printf("Запрос связи с менеджером для чата %d", chatID)

@@ -161,11 +161,11 @@ func getManagerIDs() []int64 {
 }
 
 func getAdminIDs() []int64 {
-    ids := make([]int64, 0, len(adminIDsSet))
-    for id := range adminIDsSet {
-        ids = append(ids, id)
-    }
-    return ids
+	ids := make([]int64, 0, len(adminIDsSet))
+	for id := range adminIDsSet {
+		ids = append(ids, id)
+	}
+	return ids
 }
 
 func saveManagersToFile() {

@@ -23,13 +23,16 @@ func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 
 	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👨‍💼 Добро пожаловать, менеджер!\n\n📊 Тикеты: 🟢 %d открытых | 🔴 %d закрытых\n\nВыберите действие:", openTickets, closedTickets))
 
-	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+    keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📚 Каталог", "catalog"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👥 Клиенты", "manager_tickets"),
 		),
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("📊 Статистика", "manager_export_menu"),
+        ),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❓ Помощь", "help"),
 		),
@@ -40,69 +43,15 @@ func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 func handleManagerTicketsCallback(bot *tgbotapi.BotAPI, chatID int64) {
-	if len(tickets) == 0 {
-		msg := tgbotapi.NewMessage(chatID, "📭 Нет тикетов")
-
-		keyboard := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
-			),
-		)
-		msg.ReplyMarkup = keyboard
-		bot.Send(msg)
-		return
-	}
-
-	// Показываем тикеты по 5 штук с кнопками
-	showTicketsWithButtons(bot, chatID, tickets, "🎫 Все тикеты")
+	showTicketsWithFilters(bot, chatID)
 }
 
 func handleManagerOpenTicketsCallback(bot *tgbotapi.BotAPI, chatID int64) {
-	openTickets := make(map[int]*Ticket)
-	for _, ticket := range tickets {
-		if ticket.Status == "open" {
-			openTickets[ticket.ID] = ticket
-		}
-	}
-
-	if len(openTickets) == 0 {
-		msg := tgbotapi.NewMessage(chatID, "📭 Нет открытых тикетов")
-
-		keyboard := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
-			),
-		)
-		msg.ReplyMarkup = keyboard
-		bot.Send(msg)
-		return
-	}
-
-	showTicketsWithButtons(bot, chatID, openTickets, "🆕 Открытые тикеты")
+	showTicketsWithFilters(bot, chatID, "open")
 }
 
 func handleManagerClosedTicketsCallback(bot *tgbotapi.BotAPI, chatID int64) {
-	closedTickets := make(map[int]*Ticket)
-	for _, ticket := range tickets {
-		if ticket.Status == "closed" {
-			closedTickets[ticket.ID] = ticket
-		}
-	}
-
-	if len(closedTickets) == 0 {
-		msg := tgbotapi.NewMessage(chatID, "📭 Нет закрытых тикетов")
-
-		keyboard := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
-			),
-		)
-		msg.ReplyMarkup = keyboard
-		bot.Send(msg)
-		return
-	}
-
-	showTicketsWithButtons(bot, chatID, closedTickets, "🔴 Закрытые тикеты")
+	showTicketsWithFilters(bot, chatID, "closed")
 }
 
 func handleManagerStatsCallback(bot *tgbotapi.BotAPI, chatID int64) {
@@ -151,6 +100,29 @@ func handleManagerHelpCallback(bot *tgbotapi.BotAPI, chatID int64) {
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)
 }
+
+// Меню экспорта статистики
+func handleManagerExportMenu(bot *tgbotapi.BotAPI, chatID int64) {
+    msg := tgbotapi.NewMessage(chatID, "📊 Экспорт статистики в Excel:\n\nВыберите, что выгрузить:")
+    keyboard := tgbotapi.NewInlineKeyboardMarkup(
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("1) Пользователи", "manager_export_users"),
+        ),
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("2) Все тикеты", "manager_export_tickets"),
+        ),
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("3) Тикет по ID", "manager_export_ticket_by_id"),
+        ),
+        tgbotapi.NewInlineKeyboardRow(
+            tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+        ),
+    )
+    msg.ReplyMarkup = keyboard
+    bot.Send(msg)
+}
+
+var exportTicketIDState = make(map[int64]bool) // chatID -> ждем ID тикета для экспорта
 
 func isManagerResponse(message *tgbotapi.Message) bool {
 	return isManagerUser(message.From)
@@ -203,6 +175,7 @@ func handleOldReplyFormat(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 // ===== Админ-панель =====
 
 var adminActionState = make(map[int64]string) // chatID -> "add_manager" | "remove_manager"
+var searchState = make(map[int64]bool)        // chatID -> true если в режиме поиска тикета
 
 func showAdminPanel(bot *tgbotapi.BotAPI, chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, "⚙️ Админ-панель")
@@ -334,6 +307,225 @@ func idFmt(id int64) string {
 		return ""
 	}
 	return fmt.Sprintf("(ID %d)", id)
+}
+
+// showTicketsWithFilters показывает тикеты с фильтрацией и поиском
+func showTicketsWithFilters(bot *tgbotapi.BotAPI, chatID int64, statusFilter ...string) {
+	var filteredTickets []*Ticket
+	var title string
+
+	// Фильтрация по статусу
+	if len(statusFilter) > 0 && statusFilter[0] != "" {
+		for _, ticket := range tickets {
+			if ticket.Status == statusFilter[0] {
+				filteredTickets = append(filteredTickets, ticket)
+			}
+		}
+		switch statusFilter[0] {
+		case "open":
+			title = "🆕 Открытые тикеты"
+		case "closed":
+			title = "🔴 Закрытые тикеты"
+		default:
+			title = "🎫 Тикеты"
+		}
+	} else {
+		for _, ticket := range tickets {
+			filteredTickets = append(filteredTickets, ticket)
+		}
+		title = "🎫 Все тикеты"
+	}
+
+	// Сортировка по ID (новые сверху)
+	for i := 0; i < len(filteredTickets)-1; i++ {
+		for j := i + 1; j < len(filteredTickets); j++ {
+			if filteredTickets[i].ID < filteredTickets[j].ID {
+				filteredTickets[i], filteredTickets[j] = filteredTickets[j], filteredTickets[i]
+			}
+		}
+	}
+
+	// Формируем сообщение
+	var text strings.Builder
+	text.WriteString(fmt.Sprintf("%s (%d):\n\n", title, len(filteredTickets)))
+
+	if len(filteredTickets) == 0 {
+		text.WriteString("📭 Нет тикетов")
+	} else {
+		// Показываем первые 10 тикетов с подробной информацией
+		limit := 10
+		if len(filteredTickets) < limit {
+			limit = len(filteredTickets)
+		}
+
+		for i := 0; i < limit; i++ {
+			ticket := filteredTickets[i]
+			status := "🟢"
+			if ticket.Status == "closed" {
+				status = "🔴"
+			}
+
+			// Формируем имя пользователя
+			name := strings.TrimSpace(ticket.FirstName + " " + ticket.LastName)
+			if name == "" {
+				name = "Без имени"
+			}
+
+			// Формируем username
+			username := ""
+			if ticket.Username != "" {
+				username = fmt.Sprintf(" (@%s)", ticket.Username)
+			}
+
+			// Время создания
+			timeStr := ticket.CreatedAt.Format("02.01 15:04")
+
+			// Количество сообщений
+			msgCount := len(ticket.Messages)
+			msgInfo := ""
+			if msgCount > 0 {
+				msgInfo = fmt.Sprintf(" | 💬 %d", msgCount)
+			}
+
+			text.WriteString(fmt.Sprintf("%s #%d %s%s\n🆔 %d | %s%s\n\n",
+				status, ticket.ID, name, username, ticket.UserID, timeStr, msgInfo))
+		}
+
+		if len(filteredTickets) > 10 {
+			text.WriteString(fmt.Sprintf("... и еще %d тикетов", len(filteredTickets)-10))
+		}
+	}
+
+	msg := tgbotapi.NewMessage(chatID, text.String())
+
+	// Создаем кнопки
+	var keyboard [][]tgbotapi.InlineKeyboardButton
+
+	// Кнопки фильтров
+	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("🎫 Все", "manager_tickets"),
+		tgbotapi.NewInlineKeyboardButtonData("🆕 Открытые", "manager_open_tickets"),
+		tgbotapi.NewInlineKeyboardButtonData("🔴 Закрытые", "manager_closed_tickets"),
+	})
+
+	// Кнопка поиска
+	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("🔍 Поиск по номеру", "manager_search_ticket"),
+	})
+
+	// Кнопки тикетов (максимум 5 в ряд)
+	buttonLimit := 10
+	if len(filteredTickets) < buttonLimit {
+		buttonLimit = len(filteredTickets)
+	}
+	for i := 0; i < buttonLimit && i < len(filteredTickets); i++ {
+		ticketID := filteredTickets[i].ID
+		ticket := filteredTickets[i]
+
+		buttonText := fmt.Sprintf("#%d", ticketID)
+		if len(ticket.FirstName) > 0 {
+			shortName := ticket.FirstName
+			if len(shortName) > 8 {
+				shortName = shortName[:8] + "..."
+			}
+			buttonText = fmt.Sprintf("#%d %s", ticketID, shortName)
+		}
+
+		button := tgbotapi.NewInlineKeyboardButtonData(buttonText, fmt.Sprintf("ticket_view_%d", ticketID))
+
+		// Добавляем кнопку в ряд
+		if len(keyboard) == 0 || len(keyboard[len(keyboard)-1]) >= 2 {
+			keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{button})
+		} else {
+			keyboard[len(keyboard)-1] = append(keyboard[len(keyboard)-1], button)
+		}
+	}
+
+	// Кнопка "Назад"
+	keyboard = append(keyboard, []tgbotapi.InlineKeyboardButton{
+		tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+	})
+
+	msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(keyboard...)
+	bot.Send(msg)
+}
+
+// handleManagerSearchTicket обрабатывает поиск тикета по номеру
+func handleManagerSearchTicket(bot *tgbotapi.BotAPI, chatID int64) {
+	searchState[chatID] = true
+	msg := tgbotapi.NewMessage(chatID, "🔍 Введите номер тикета для поиска:\n\nИспользуйте /cancel для отмены")
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("❌ Отмена", "manager_tickets"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
+// handleTicketSearchInput обрабатывает ввод номера тикета для поиска
+func handleTicketSearchInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) bool {
+	chatID := message.Chat.ID
+	if !searchState[chatID] {
+		return false
+	}
+
+	if message.Text == "/cancel" {
+		delete(searchState, chatID)
+		showTicketsWithFilters(bot, chatID)
+		return true
+	}
+
+	// Парсим номер тикета
+	ticketID, err := strconv.Atoi(strings.TrimSpace(message.Text))
+	if err != nil {
+		bot.Send(tgbotapi.NewMessage(chatID, "❌ Неверный формат. Введите числовой номер тикета или /cancel"))
+		return true
+	}
+
+	// Ищем тикет
+	_, exists := tickets[ticketID]
+	if !exists {
+		bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Тикет #%d не найден", ticketID)))
+		delete(searchState, chatID)
+		return true
+	}
+
+	// Показываем найденный тикет
+	delete(searchState, chatID)
+	showTicketDetails(bot, chatID, ticketID)
+	return true
+}
+
+// handleExportTicketIDInput обрабатывает ввод ID тикета для экспорта
+func handleExportTicketIDInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) bool {
+    chatID := message.Chat.ID
+    if !exportTicketIDState[chatID] {
+        return false
+    }
+    if message.Text == "/cancel" {
+        delete(exportTicketIDState, chatID)
+        handleManagerExportMenu(bot, chatID)
+        return true
+    }
+    id, err := strconv.Atoi(strings.TrimSpace(message.Text))
+    if err != nil {
+        bot.Send(tgbotapi.NewMessage(chatID, "❌ Неверный формат. Введите числовой ID тикета или /cancel"))
+        return true
+    }
+    if _, ok := tickets[id]; !ok {
+        bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Тикет #%d не найден", id)))
+        delete(exportTicketIDState, chatID)
+        return true
+    }
+    if buf, err := exportSingleTicketExcel(id); err == nil {
+        sendExcelBuffer(bot, chatID, fmt.Sprintf("ticket_%d.xlsx", id), buf)
+    } else {
+        bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка формирования файла"))
+    }
+    delete(exportTicketIDState, chatID)
+    return true
 }
 
 // notifyNewUserWithAssign отправляет админам уведомление о новом пользователе с кнопкой "Назначить менеджером"

@@ -684,19 +684,7 @@ func showContactManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 	bot.Send(msg)
 }
 
-func contactManagerDirect(bot *tgbotapi.BotAPI, chatID int64) {
-	// Проверяем, есть ли у пользователя активный тикет
-	if ticketID, exists := userTickets[chatID]; exists {
-		if ticket, found := tickets[ticketID]; found && ticket.Status == "open" {
-			msg := tgbotapi.NewMessage(chatID, "💬 У вас уже есть активный диалог с менеджером!\n\nВы можете продолжить общение в этом чате. Менеджер получит ваши сообщения.")
-			bot.Send(msg)
-			return
-		}
-	}
-
-	// Создаем тикет сразу и просим написать вопрос
-	createTicketAndAskQuestion(bot, chatID, "Не определен")
-}
+// contactManagerDirect больше не используется (сбор имени перенесен в main.go)
 
 func handleManagerReplyToTicket(bot *tgbotapi.BotAPI, message *tgbotapi.Message, ticketID int) {
 	ticket, exists := tickets[ticketID]

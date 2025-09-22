@@ -32,6 +32,7 @@ type Product struct {
 var userStates = make(map[int64]*UserState)
 var questionStates = make(map[int64]bool)    // true если пользователь в режиме вопроса менеджеру
 var messageModeStates = make(map[int64]bool) // true если пользователь в режиме написания сообщения в тикет
+var nameCollectState = make(map[int64]bool)  // true если ожидаем имя клиента для контакта с менеджером
 
 var products = []Product{
 	{"Футболка Крылатые Фразы белая", []string{"S", "M", "L", "XL", "XXL"}, "https://osteomerch.com/katalog/item/colorful-jumper-with-horizontal-stripes/", "./katalog/Крылатые Фразы/1.jpg"},
@@ -119,38 +120,51 @@ func startSelfPing() {
 		pingInterval := 40 * time.Second
 		log.Printf("🔄 Запущен самопинг каждые %v для предотвращения засыпания", pingInterval)
 
-		// Первый пинг через 10 секунд после запуска
-		time.Sleep(10 * time.Second)
-
-		for {
-			// Получаем порт из переменной окружения
+		// helper: получить целевой URL
+		resolveURL := func() string {
+			if u := os.Getenv("SELF_PING_URL"); u != "" {
+				return u
+			}
 			port := os.Getenv("PORT")
 			if port == "" {
 				port = "8080"
 			}
+			return fmt.Sprintf("http://localhost:%s/health", port)
+		}
 
-			// Формируем URL для health эндпоинта
-			url := fmt.Sprintf("http://localhost:%s/health", port)
+		client := &http.Client{Timeout: 5 * time.Second}
 
-			// Делаем HTTP запрос с таймаутом
-			client := &http.Client{
-				Timeout: 5 * time.Second,
+		// немедленный пинг при старте
+		func() {
+			url := resolveURL()
+			resp, err := client.Get(url)
+			if err != nil {
+				log.Printf("❌ Ошибка самопинга (старт): %v (URL: %s)", err, url)
+				return
 			}
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				log.Printf("✅ Самопинг успешен (старт): %s", url)
+			} else {
+				log.Printf("⚠️ Самопинг вернул статус (старт): %d для %s", resp.StatusCode, url)
+			}
+		}()
 
+		ticker := time.NewTicker(pingInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			url := resolveURL()
 			resp, err := client.Get(url)
 			if err != nil {
 				log.Printf("❌ Ошибка самопинга: %v (URL: %s)", err, url)
-			} else {
-				resp.Body.Close()
-				if resp.StatusCode == http.StatusOK {
-					log.Printf("✅ Самопинг успешен: %s", url)
-				} else {
-					log.Printf("⚠️ Самопинг вернул статус: %d для %s", resp.StatusCode, url)
-				}
+				continue
 			}
-
-			// Ждем интервал до следующего пинга
-			time.Sleep(pingInterval)
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				log.Printf("✅ Самопинг успешен: %s", url)
+			} else {
+				log.Printf("⚠️ Самопинг вернул статус: %d для %s", resp.StatusCode, url)
+			}
 		}
 	}()
 }
@@ -186,6 +200,35 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		// Уведомление админам/менеджерам о пользователе и его ID
 		notifyNewUserWithAssign(bot, message.From)
 	default:
+		// Сбор имени для контакта с менеджером
+		if nameCollectState[chatID] {
+			if strings.TrimSpace(strings.ToLower(message.Text)) == "/cancel" {
+				delete(nameCollectState, chatID)
+				msg := tgbotapi.NewMessage(chatID, "❌ Отменено")
+				bot.Send(msg)
+				sendMainMenu(bot, chatID)
+				return
+			}
+
+			providedName := strings.TrimSpace(message.Text)
+			if providedName == "" {
+				bot.Send(tgbotapi.NewMessage(chatID, "Пожалуйста, укажите имя"))
+				return
+			}
+
+			// Убедимся, что есть тикет
+			if _, exists := userTickets[chatID]; !exists {
+				createTicketAndAskQuestion(bot, chatID, "Не определен")
+			}
+			if ticketID, ok := userTickets[chatID]; ok {
+				updateTicketUserInfo(ticketID, message.From.UserName, providedName, "")
+			}
+			delete(nameCollectState, chatID)
+			bot.Send(tgbotapi.NewMessage(chatID, "Спасибо! Теперь напишите ваш вопрос менеджеру."))
+			// Включаем режим диалога
+			questionStates[chatID] = true
+			return
+		}
 		// Обработка поиска тикетов для менеджеров
 		if isManagerUser(message.From) {
 			if handleTicketSearchInput(bot, message) || handleExportTicketIDInput(bot, message) {
@@ -344,7 +387,11 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 	case "start_survey":
 		startSurvey(bot, chatID)
 	case "catalog":
-		showCatalog(bot, chatID)
+		if isManagerUser(callback.From) {
+			showCatalogForManager(bot, chatID)
+		} else {
+			showCatalog(bot, chatID)
+		}
 	case "help":
 		if isManagerUser(callback.From) {
 			handleManagerHelpCallback(bot, chatID)
@@ -378,7 +425,9 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		showContactManagerMenu(bot, chatID)
 	case "contact_manager_direct":
 		log.Printf("Прямая связь с менеджером для чата %d", chatID)
-		contactManagerDirect(bot, chatID)
+		nameCollectState[chatID] = true
+		prompt := tgbotapi.NewMessage(chatID, "Как к вам обращаться? Укажите имя.\n\nИспользуйте /cancel для отмены.")
+		bot.Send(prompt)
 	case "back_to_ticket":
 		log.Printf("Возврат в тикет для чата %d", chatID)
 		showClientTicketInterface(bot, chatID)
@@ -727,6 +776,45 @@ func showCatalog(bot *tgbotapi.BotAPI, chatID int64) {
 	finalMsg.ReplyMarkup = keyboard
 	if _, err := bot.Send(finalMsg); err != nil {
 		log.Printf("Ошибка отправки финального сообщения каталога: %v", err)
+	}
+}
+
+// showCatalogForManager — версия каталога без клиентских CTA
+func showCatalogForManager(bot *tgbotapi.BotAPI, chatID int64) {
+	log.Printf("Показываю каталог (менеджер) для чата %d", chatID)
+
+	msg := tgbotapi.NewMessage(chatID, "Каталог товаров:")
+	if _, err := bot.Send(msg); err != nil {
+		log.Printf("Ошибка отправки сообщения каталога: %v", err)
+		return
+	}
+
+	for _, product := range products {
+		photo := tgbotapi.NewPhoto(chatID, tgbotapi.FilePath(product.ImageURL))
+		photo.Caption = fmt.Sprintf("%s\nРазмеры: %s\nСсылка на сайт: [%s](%s)",
+			product.Name, strings.Join(product.Sizes, ", "), product.Name, product.Link)
+		photo.ParseMode = "MarkdownV2"
+		if _, err := bot.Send(photo); err != nil {
+			log.Printf("Ошибка отправки фото каталога для %s: %v, отправляю текстовое сообщение", product.Name, err)
+			textMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s\nРазмеры: %s\nСсылка на сайт: [%s](%s)",
+				product.Name, strings.Join(product.Sizes, ", "), product.Name, product.Link))
+			textMsg.ParseMode = "MarkdownV2"
+			if _, textErr := bot.Send(textMsg); textErr != nil {
+				log.Printf("Ошибка отправки текстового сообщения каталога: %v", textErr)
+			}
+		}
+	}
+
+	// Только возврат в меню менеджера
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_manager_menu"),
+		),
+	)
+	finalMsg := tgbotapi.NewMessage(chatID, "Готово. Вернуться в меню менеджера:")
+	finalMsg.ReplyMarkup = keyboard
+	if _, err := bot.Send(finalMsg); err != nil {
+		log.Printf("Ошибка отправки финального сообщения каталога (менеджер): %v", err)
 	}
 }
 

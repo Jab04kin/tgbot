@@ -17,7 +17,6 @@ import (
 var tickets = make(map[int]*Ticket)   // все тикеты
 var userTickets = make(map[int64]int) // связь пользователь -> ID тикета
 var nextTicketID = 1
-var managerID int64 = 0 // @Shpinatyamba - будет установлен автоматически при первом сообщении
 
 type Message struct {
 	ID            int       `json:"id"`
@@ -290,21 +289,16 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 			ticket.CreatedAt.Format("15:04 02.01.2006"))
 	}
 
-	// Получаем ID менеджера из переменной окружения
-	managerIDStr := os.Getenv("MANAGER_ID")
-	if managerIDStr == "0" || managerIDStr == "" {
-		log.Printf("Менеджер не определен (клиентский режим), сообщение не отправлено")
+	// Рассылаем всем менеджерам
+	ids := getManagerIDs()
+	if len(ids) == 0 {
+		log.Printf("Менеджеры не заданы, уведомление не отправлено")
 		return
 	}
-
-	managerID, err := strconv.ParseInt(managerIDStr, 10, 64)
-	if err != nil {
-		log.Printf("Ошибка парсинга MANAGER_ID: %v", err)
-		return
+	for _, mid := range ids {
+		msg := tgbotapi.NewMessage(mid, messageText)
+		bot.Send(msg)
 	}
-
-	msg := tgbotapi.NewMessage(managerID, messageText)
-	bot.Send(msg)
 
 	log.Printf("Отправлена карточка клиента для тикета #%d менеджеру", ticket.ID)
 }
@@ -339,21 +333,16 @@ func handleManagerQuestion(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	// Отправляем сообщение менеджеру
 	messageText := fmt.Sprintf("💬 Новое сообщение от клиента (тикет #%d):\n\n%s", ticketID, question)
 
-	// Получаем ID менеджера из переменной окружения
-	managerIDStr := os.Getenv("MANAGER_ID")
-	if managerIDStr == "0" || managerIDStr == "" {
-		log.Printf("Менеджер не определен (клиентский режим), сообщение не отправлено")
+	// Рассылаем всем менеджерам
+	ids := getManagerIDs()
+	if len(ids) == 0 {
+		log.Printf("Менеджеры не заданы, уведомление не отправлено")
 		return
 	}
-
-	managerID, err := strconv.ParseInt(managerIDStr, 10, 64)
-	if err != nil {
-		log.Printf("Ошибка парсинга MANAGER_ID: %v", err)
-		return
+	for _, mid := range ids {
+		msg := tgbotapi.NewMessage(mid, messageText)
+		bot.Send(msg)
 	}
-
-	msg := tgbotapi.NewMessage(managerID, messageText)
-	bot.Send(msg)
 
 	log.Printf("Отправлено сообщение от пользователя %d в тикет #%d", chatID, ticketID)
 }
@@ -738,7 +727,6 @@ func handleTicketButtonCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData
 		showManagerTicketDialog(bot, chatID, ticketID)
 	}
 }
-
 
 func showContactManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, "Выберите способ связи с менеджером:")

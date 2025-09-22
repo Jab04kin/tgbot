@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 
@@ -25,9 +24,6 @@ func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👨‍💼 Добро пожаловать, менеджер!\n\n📊 Тикеты: 🟢 %d открытых | 🔴 %d закрытых\n\nВыберите действие:", openTickets, closedTickets))
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("📏 Подобрать размер", "start_survey"),
-		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("📚 Каталог", "catalog"),
 		),
@@ -157,30 +153,7 @@ func handleManagerHelpCallback(bot *tgbotapi.BotAPI, chatID int64) {
 }
 
 func isManagerResponse(message *tgbotapi.Message) bool {
-	// Проверяем переменную окружения MANAGER_ID
-	managerIDStr := os.Getenv("MANAGER_ID")
-
-	// Если MANAGER_ID == "0" или пустой, то клиентский режим - менеджер не определен
-	if managerIDStr == "0" || managerIDStr == "" {
-		return false
-	}
-
-	// Если MANAGER_ID содержит реальный ID, проверяем по нему
-	if managerID, err := strconv.ParseInt(managerIDStr, 10, 64); err == nil && message.From.ID == managerID {
-		return true
-	}
-
-	// Проверяем по username (для автоматического определения) - только если MANAGER_ID не 0
-	if message.From.UserName == "Shpinatyamba" {
-		// Устанавливаем ID менеджера при первом сообщении
-		if managerID == 0 {
-			managerID = message.From.ID
-			log.Printf("Автоматически установлен ID менеджера: %d (@%s)", managerID, message.From.UserName)
-		}
-		return true
-	}
-
-	return false
+	return isManagerUser(message.From)
 }
 
 func handleManagerResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
@@ -223,6 +196,185 @@ func handleOldReplyFormat(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		log.Printf("Менеджер ответил пользователю %d: %s", userID, answerText)
 	} else {
 		msg := tgbotapi.NewMessage(message.Chat.ID, "❌ Неверный формат. Используйте: Ответ: [ID_пользователя] [текст_ответа]")
+		bot.Send(msg)
+	}
+}
+
+// ===== Админ-панель =====
+
+var adminActionState = make(map[int64]string) // chatID -> "add_manager" | "remove_manager"
+
+func showAdminPanel(bot *tgbotapi.BotAPI, chatID int64) {
+	msg := tgbotapi.NewMessage(chatID, "⚙️ Админ-панель")
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👥 Список менеджеров", "admin_list_managers"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("➕ Назначить менеджера", "admin_add_manager"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("➖ Снять менеджера", "admin_remove_manager"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🔙 Назад", "back_to_menu"),
+		),
+	)
+	msg.ReplyMarkup = keyboard
+	bot.Send(msg)
+}
+
+func showManagersList(bot *tgbotapi.BotAPI, chatID int64) {
+	ids := getManagerIDs()
+	if len(ids) == 0 && len(managerUsernamesSet) == 0 {
+		bot.Send(tgbotapi.NewMessage(chatID, "Менеджеры не заданы"))
+		return
+	}
+	var b strings.Builder
+	b.WriteString("Текущие менеджеры:\n")
+	for _, id := range ids {
+		b.WriteString(fmt.Sprintf("• ID: %d\n", id))
+	}
+	for u := range managerUsernamesSet {
+		b.WriteString(fmt.Sprintf("• @%s (по username)\n", u))
+	}
+	bot.Send(tgbotapi.NewMessage(chatID, b.String()))
+}
+
+func promptAddManager(bot *tgbotapi.BotAPI, chatID int64) {
+	adminActionState[chatID] = "add_manager"
+	bot.Send(tgbotapi.NewMessage(chatID, "Отправьте:\n• форвард сообщения пользователя\n• или его числовой ID\n• или @username"))
+}
+
+func promptRemoveManager(bot *tgbotapi.BotAPI, chatID int64) {
+	adminActionState[chatID] = "remove_manager"
+	bot.Send(tgbotapi.NewMessage(chatID, "Кого снять? Пришлите форвард, числовой ID или @username"))
+}
+
+func handleAdminInput(bot *tgbotapi.BotAPI, message *tgbotapi.Message) bool {
+	chatID := message.Chat.ID
+	action, has := adminActionState[chatID]
+	if !has {
+		return false
+	}
+
+	// Пытаемся извлечь пользователя из форварда
+	var targetID int64
+	var targetUsername string
+	if message.ForwardFrom != nil {
+		targetID = message.ForwardFrom.ID
+		targetUsername = message.ForwardFrom.UserName
+	} else {
+		text := strings.TrimSpace(message.Text)
+		if strings.HasPrefix(text, "@") {
+			targetUsername = strings.TrimPrefix(text, "@")
+		} else if id, err := strconv.ParseInt(text, 10, 64); err == nil {
+			targetID = id
+		} else {
+			bot.Send(tgbotapi.NewMessage(chatID, "Не удалось распознать пользователя. Пришлите форвард, ID или @username"))
+			return true
+		}
+	}
+
+	switch action {
+	case "add_manager":
+		if targetID != 0 {
+			addManagerByID(targetID)
+		}
+		if targetUsername != "" {
+			managerUsernamesSet[strings.ToLower(targetUsername)] = true
+			saveManagersToFile()
+		}
+		// Уведомления
+		bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Назначен менеджером: %s%v",
+			usernameFmt(targetUsername), idFmt(targetID))))
+		if targetID != 0 {
+			bot.Send(tgbotapi.NewMessage(targetID, "✅ Вы назначены менеджером"))
+		}
+	case "remove_manager":
+		changed := false
+		if targetID != 0 {
+			if managerIDsSet[targetID] {
+				removeManagerByID(targetID)
+				changed = true
+			}
+		}
+		if targetUsername != "" {
+			lu := strings.ToLower(targetUsername)
+			if managerUsernamesSet[lu] {
+				delete(managerUsernamesSet, lu)
+				saveManagersToFile()
+				changed = true
+			}
+		}
+		if changed {
+			bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Снят с менеджеров: %s%v",
+				usernameFmt(targetUsername), idFmt(targetID))))
+			if targetID != 0 {
+				bot.Send(tgbotapi.NewMessage(targetID, "⚠️ Вы больше не менеджер"))
+			}
+		} else {
+			bot.Send(tgbotapi.NewMessage(chatID, "Пользователь не найден среди менеджеров"))
+		}
+	}
+
+	delete(adminActionState, chatID)
+	return true
+}
+
+func usernameFmt(u string) string {
+	if u == "" {
+		return ""
+	}
+	return "@" + u + " "
+}
+
+func idFmt(id int64) string {
+	if id == 0 {
+		return ""
+	}
+	return fmt.Sprintf("(ID %d)", id)
+}
+
+// notifyNewUserWithAssign отправляет админам уведомление о новом пользователе с кнопкой "Назначить менеджером"
+func notifyNewUserWithAssign(bot *tgbotapi.BotAPI, user *tgbotapi.User) {
+	if user == nil {
+		return
+	}
+
+	name := strings.TrimSpace(strings.TrimSpace(user.FirstName + " " + user.LastName))
+	if name == "" {
+		name = "(без имени)"
+	}
+	uname := user.UserName
+	if uname == "" {
+		uname = "—"
+	} else {
+		uname = "@" + uname
+	}
+
+	text := fmt.Sprintf("🆕 Новый пользователь написал боту\nИмя: %s\nUsername: %s\nID: %d", name, uname, user.ID)
+
+	label := "➕ Назначить менеджером"
+	if user.UserName != "" {
+		label = fmt.Sprintf("➕ Назначить %s менеджером", "@"+user.UserName)
+	}
+
+	keyboard := tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData(
+				label,
+				fmt.Sprintf("admin_assign_manager_id_%d", user.ID),
+			),
+		),
+	)
+
+	for _, aid := range getAdminIDs() {
+		if aid == 0 {
+			continue
+		}
+		msg := tgbotapi.NewMessage(aid, text)
+		msg.ReplyMarkup = keyboard
 		bot.Send(msg)
 	}
 }

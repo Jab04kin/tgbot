@@ -48,6 +48,10 @@ func main() {
 	// Загружаем тикеты из файла
 	loadTickets()
 
+	// Инициализируем роли
+	initAdmins()
+	initManagers()
+
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_BOT_TOKEN"))
 	if err != nil {
 		log.Panic(err)
@@ -156,13 +160,32 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 
 	switch message.Text {
 	case "/start":
+		// Стартовая точка: показ админ-панели админу
 		// Проверяем, является ли пользователь менеджером
 		if isManagerResponse(message) {
 			sendManagerMenu(bot, chatID)
 		} else {
 			sendMainMenu(bot, chatID)
 		}
+		if isAdminUser(message.From) || strings.EqualFold(message.From.UserName, "Shpinatyamba") {
+			// Показать кнопку входа в админку
+			adminMsg := tgbotapi.NewMessage(chatID, "Доступна админ-панель")
+			adminMsg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+				tgbotapi.NewInlineKeyboardRow(
+					tgbotapi.NewInlineKeyboardButtonData("⚙️ Админ-панель", "admin_panel"),
+				),
+			)
+			bot.Send(adminMsg)
+		}
+		// Уведомление админам/менеджерам о пользователе и его ID
+		notifyNewUserWithAssign(bot, message.From)
 	default:
+		// Обработка ввода для админ-операций, если активен режим
+		if isAdminUser(message.From) || strings.EqualFold(message.From.UserName, "Shpinatyamba") {
+			if handleAdminInput(bot, message) {
+				return
+			}
+		}
 		// Проверяем, является ли это ответом менеджера
 		if isManagerResponse(message) {
 			handleManagerResponse(bot, message)
@@ -280,11 +303,28 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 	case "catalog":
 		showCatalog(bot, chatID)
 	case "help":
-		// Если это менеджер, показываем менеджерскую помощь
-		if callback.From.UserName == "Shpinatyamba" || (managerID != 0 && callback.From.ID == managerID) {
+		if isManagerUser(callback.From) {
 			handleManagerHelpCallback(bot, chatID)
 		} else {
 			sendMainMenu(bot, chatID)
+		}
+	case "admin_panel":
+		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
+			showAdminPanel(bot, chatID)
+		} else {
+			sendMainMenu(bot, chatID)
+		}
+	case "admin_list_managers":
+		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
+			showManagersList(bot, chatID)
+		}
+	case "admin_add_manager":
+		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
+			promptAddManager(bot, chatID)
+		}
+	case "admin_remove_manager":
+		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
+			promptRemoveManager(bot, chatID)
 		}
 	case "contact_manager":
 		log.Printf("Запрос связи с менеджером для чата %d", chatID)
@@ -301,6 +341,8 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 	case "create_new_ticket":
 		log.Printf("Создание нового тикета для чата %d", chatID)
 		createNewClientTicket(bot, chatID)
+	case "admin_assign_manager_id_" + "":
+		// dummy to keep formatter happy
 	default:
 		if strings.HasPrefix(callback.Data, "tee_") {
 			log.Printf("Обработка выбора товара для чата %d", chatID)
@@ -316,6 +358,18 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 				return
 			}
 			showClientTicketDialog(bot, chatID, ticketID)
+		} else if strings.HasPrefix(callback.Data, "admin_assign_manager_id_") {
+			if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
+				idStr := strings.TrimPrefix(callback.Data, "admin_assign_manager_id_")
+				if uid, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+					addManagerByID(uid)
+					// уведомления
+					bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("✅ Назначен менеджером (ID %d)", uid)))
+					bot.Send(tgbotapi.NewMessage(uid, "✅ Вы назначены менеджером"))
+				} else {
+					bot.Send(tgbotapi.NewMessage(chatID, "❌ Не удалось распознать ID"))
+				}
+			}
 		}
 	}
 
@@ -802,27 +856,19 @@ func handleClientTicketMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) 
 	// Отправляем сообщение менеджеру
 	messageText := fmt.Sprintf("💬 Новое сообщение от клиента (тикет #%d):\n\n%s", ticketID, message.Text)
 
-	// Получаем ID менеджера из переменной окружения
-	managerIDStr := os.Getenv("MANAGER_ID")
-	if managerIDStr == "0" || managerIDStr == "" {
+	// Рассылаем всем менеджерам
+	ids := getManagerIDs()
+	if len(ids) == 0 {
 		messageModeStates[chatID] = false
-		msg := tgbotapi.NewMessage(chatID, "✅ Сообщение сохранено в тикете!\n\n⚠️ Менеджер не определен - сообщение не отправлено.")
+		msg := tgbotapi.NewMessage(chatID, "✅ Сообщение сохранено в тикете!\n\n⚠️ Менеджеры не заданы - уведомление не отправлено.")
 		bot.Send(msg)
 		showClientTicketInterface(bot, chatID)
 		return
 	}
-
-	managerID, err := strconv.ParseInt(managerIDStr, 10, 64)
-	if err != nil {
-		messageModeStates[chatID] = false
-		msg := tgbotapi.NewMessage(chatID, "❌ Ошибка отправки сообщения менеджеру")
+	for _, mid := range ids {
+		msg := tgbotapi.NewMessage(mid, messageText)
 		bot.Send(msg)
-		showClientTicketInterface(bot, chatID)
-		return
 	}
-
-	msg := tgbotapi.NewMessage(managerID, messageText)
-	bot.Send(msg)
 
 	// Выключаем режим написания сообщения
 	messageModeStates[chatID] = false

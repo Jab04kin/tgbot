@@ -129,24 +129,6 @@ func startSelfPing() {
 		pingInterval := 40 * time.Second
 		log.Printf("🔄 Запущен самопинг каждые %v для предотвращения засыпания", pingInterval)
 
-		// helper: получить целевой URL (приоритет: SELF_PING_URL -> RENDER_EXTERNAL_URL -> RENDER_URL -> localhost)
-		resolveURL := func() string {
-			if u := strings.TrimSpace(os.Getenv("SELF_PING_URL")); u != "" {
-				return ensureHealthPath(u)
-			}
-			if u := strings.TrimSpace(os.Getenv("RENDER_EXTERNAL_URL")); u != "" {
-				return ensureHealthPath(u)
-			}
-			if u := strings.TrimSpace(os.Getenv("RENDER_URL")); u != "" {
-				return ensureHealthPath(u)
-			}
-			port := os.Getenv("PORT")
-			if port == "" {
-				port = "8080"
-			}
-			return fmt.Sprintf("http://localhost:%s/health", port)
-		}
-
 		// ensureHealthPath добавляет "/health" если путь пуст или корневой
 		ensureHealthPath := func(base string) string {
 			b := strings.TrimSpace(base)
@@ -166,6 +148,24 @@ func startSelfPing() {
 				return b + "/health"
 			}
 			return b
+		}
+
+		// helper: получить целевой URL (приоритет: SELF_PING_URL -> RENDER_EXTERNAL_URL -> RENDER_URL -> localhost)
+		resolveURL := func() string {
+			if u := strings.TrimSpace(os.Getenv("SELF_PING_URL")); u != "" {
+				return ensureHealthPath(u)
+			}
+			if u := strings.TrimSpace(os.Getenv("RENDER_EXTERNAL_URL")); u != "" {
+				return ensureHealthPath(u)
+			}
+			if u := strings.TrimSpace(os.Getenv("RENDER_URL")); u != "" {
+				return ensureHealthPath(u)
+			}
+			port := os.Getenv("PORT")
+			if port == "" {
+				port = "8080"
+			}
+			return fmt.Sprintf("http://localhost:%s/health", port)
 		}
 
 		client := &http.Client{Timeout: 8 * time.Second}

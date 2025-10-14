@@ -34,17 +34,31 @@ func initManagers() {
 	loadManagersFromFile()
 
 	// 2) Seed from env (legacy + lists)
-	// Legacy одиночный ID
-	if v := strings.TrimSpace(os.Getenv("MANAGER_ID")); v != "" && v != "0" {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			managerIDsSet[id] = true
-		} else {
-			log.Printf("Некорректный MANAGER_ID: %v", err)
-		}
-	}
+    // Legacy одиночный ID (поддержка альтернативных ключей: Manager_ID, manager_id)
+    readSingleID := func(keys ...string) {
+        for _, k := range keys {
+            v := strings.TrimSpace(os.Getenv(k))
+            if v == "" || v == "0" { continue }
+            if id, err := strconv.ParseInt(v, 10, 64); err == nil {
+                managerIDsSet[id] = true
+            } else {
+                log.Printf("Некорректный %s: %v", k, err)
+            }
+            return
+        }
+    }
+    // читаем MANAGER_ID, затем MANAGER_ID2, MANAGER_ID3 (и их регистровые варианты)
+    readSingleID("MANAGER_ID", "Manager_ID", "manager_id")
+    readSingleID("MANAGER_ID2", "Manager_ID2", "manager_id2")
+    readSingleID("MANAGER_ID3", "Manager_ID3", "manager_id3")
 
-	// Список ID
-	if v := strings.TrimSpace(os.Getenv("MANAGER_IDS")); v != "" {
+    // Список ID (поддержка альтернативных ключей: Manager_IDS, manager_ids)
+    v := strings.TrimSpace(os.Getenv("MANAGER_IDS"))
+    if v == "" {
+        if vv := strings.TrimSpace(os.Getenv("Manager_IDS")); vv != "" { v = vv }
+        if vv := strings.TrimSpace(os.Getenv("manager_ids")); vv != "" { v = vv }
+    }
+    if v != "" {
 		parts := strings.Split(v, ",")
 		for _, p := range parts {
 			p = strings.TrimSpace(p)
@@ -176,18 +190,18 @@ func saveManagersToFile() {
 	for u := range managerUsernamesSet {
 		store.ManagerUsernames = append(store.ManagerUsernames, u)
 	}
-	data, err := json.MarshalIndent(&store, "", "  ")
+    data, err := json.MarshalIndent(&store, "", "  ")
 	if err != nil {
 		log.Printf("Ошибка сериализации managers.json: %v", err)
 		return
 	}
-	if err := os.WriteFile(managersStoreFile, data, 0644); err != nil {
+    if err := writeData(managersStoreFile, data); err != nil {
 		log.Printf("Ошибка записи %s: %v", managersStoreFile, err)
 	}
 }
 
 func loadManagersFromFile() {
-	data, err := os.ReadFile(managersStoreFile)
+    data, err := readData(managersStoreFile)
 	if err != nil {
 		return
 	}

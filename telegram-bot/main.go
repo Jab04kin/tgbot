@@ -20,6 +20,9 @@ type UserState struct {
 	ChestSize       int
 	Oversize        bool
 	RecommendedSize string
+    FirstName       string
+    LastName        string
+    ForSelf         *bool
 }
 
 type Product struct {
@@ -437,8 +440,22 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		}
 	case "back_to_manager_menu":
 		sendManagerMenu(bot, chatID)
-	case "start_survey":
-		startSurvey(bot, chatID)
+    case "start_survey":
+        startSurvey(bot, chatID)
+    case "survey_for_self_yes":
+        if st, ok := userStates[chatID]; ok {
+            v := true
+            st.ForSelf = &v
+            st.Step = 3
+            bot.Send(tgbotapi.NewMessage(chatID, "Ваш рост? (в см)"))
+        }
+    case "survey_for_self_no":
+        if st, ok := userStates[chatID]; ok {
+            v := false
+            st.ForSelf = &v
+            st.Step = 3
+            bot.Send(tgbotapi.NewMessage(chatID, "Ваш рост? (в см)"))
+        }
 	case "catalog":
 		if isManagerUser(callback.From) {
 			showCatalogForManager(bot, chatID)
@@ -531,36 +548,13 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 // Функция для запуска опроса о товарах
 func startSurvey(bot *tgbotapi.BotAPI, chatID int64) {
 	log.Printf("Начинаю опрос для чата %d", chatID)
-	userStates[chatID] = &UserState{Step: 1}
+    userStates[chatID] = &UserState{Step: 1}
 
-	msg := tgbotapi.NewMessage(chatID, "Выберите интересующий мерч:")
+    // Шаг 1: запрос имени и фамилии
+    msg := tgbotapi.NewMessage(chatID, "Укажите ваше имя и фамилию?")
 	if _, err := bot.Send(msg); err != nil {
 		log.Printf("Ошибка отправки сообщения: %v", err)
 		return
-	}
-
-	for i, product := range products {
-		keyboard := tgbotapi.NewInlineKeyboardMarkup(
-			tgbotapi.NewInlineKeyboardRow(
-				tgbotapi.NewInlineKeyboardButtonData("Выбрать", fmt.Sprintf("tee_%d", i)),
-			),
-		)
-
-		// Пытаемся отправить фото
-		photo := tgbotapi.NewPhoto(chatID, tgbotapi.FilePath(product.ImageURL))
-		photo.Caption = fmt.Sprintf("%s\n\nРазмеры: %s", product.Name, strings.Join(product.Sizes, ", "))
-		photo.ReplyMarkup = keyboard
-
-		if _, err := bot.Send(photo); err != nil {
-			log.Printf("Ошибка отправки фото для %s: %v, отправляю текстовое сообщение", product.Name, err)
-
-			// Если фото не отправилось, отправляем текстовое сообщение
-			textMsg := tgbotapi.NewMessage(chatID, fmt.Sprintf("%s\n\nРазмеры: %s", product.Name, strings.Join(product.Sizes, ", ")))
-			textMsg.ReplyMarkup = keyboard
-			if _, textErr := bot.Send(textMsg); textErr != nil {
-				log.Printf("Ошибка отправки текстового сообщения: %v", textErr)
-			}
-		}
 	}
 }
 
@@ -569,7 +563,36 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 	chatID := message.Chat.ID
 
 	switch state.Step {
-	case 2:
+    case 1:
+        // Ожидаем: Имя и Фамилия
+        full := strings.TrimSpace(message.Text)
+        if full == "" {
+            bot.Send(tgbotapi.NewMessage(chatID, "Пожалуйста, укажите имя и фамилию"))
+            return
+        }
+        parts := strings.Fields(full)
+        if len(parts) < 2 {
+            bot.Send(tgbotapi.NewMessage(chatID, "Укажите и имя, и фамилию"))
+            return
+        }
+        state.FirstName = parts[0]
+        state.LastName = strings.Join(parts[1:], " ")
+        state.Step = 2
+        // Шаг 2: выбираете ли вы для себя?
+        prompt := tgbotapi.NewMessage(chatID, "Выбираете ли вы для себя?")
+        prompt.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+            tgbotapi.NewInlineKeyboardRow(
+                tgbotapi.NewInlineKeyboardButtonData("Да", "survey_for_self_yes"),
+                tgbotapi.NewInlineKeyboardButtonData("Нет", "survey_for_self_no"),
+            ),
+        )
+        bot.Send(prompt)
+        return
+    case 2:
+        // Здесь ждём нажатия инлайн-кнопки; если пришёл текст — игнорируем
+        bot.Send(tgbotapi.NewMessage(chatID, "Нажмите кнопку: Да/Нет"))
+        return
+    case 3:
 		height, err := strconv.Atoi(message.Text)
 		if err != nil {
 			msg := tgbotapi.NewMessage(chatID, "Пожалуйста, введите рост в сантиметрах (например: 175)")
@@ -577,18 +600,17 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 			return
 		}
 
-		if height < 100 || height > 250 {
-			msg := tgbotapi.NewMessage(chatID, "Рост должен быть от 100 до 250 см. Попробуйте еще раз:")
+		if height < 150 || height > 220 {
+			msg := tgbotapi.NewMessage(chatID, "Рост должен быть от 150 до 220 см. Попробуйте еще раз:")
 			bot.Send(msg)
 			return
 		}
 
-		state.Height = height
-		state.Step = 3
-		msg := tgbotapi.NewMessage(chatID, "Обхват груди? (в см)")
+        state.Height = height
+        state.Step = 4
+        msg := tgbotapi.NewMessage(chatID, "Ваш размер груди? (в см)")
 		bot.Send(msg)
-
-	case 3:
+    case 4:
 		chestSize, err := strconv.Atoi(message.Text)
 		if err != nil {
 			msg := tgbotapi.NewMessage(chatID, "Пожалуйста, введите обхват груди в сантиметрах (например: 90)")
@@ -602,21 +624,12 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 			return
 		}
 
-		state.ChestSize = chestSize
-		// Оверсайз доступен только для модели "Крылатые Фразы" (индекс 0)
-		selectedIdx, _ := strconv.Atoi(state.SelectedTee)
-		if selectedIdx == 0 { // разрешаем оверсайз
-			state.Step = 4
-			askOversizeQuestion(bot, chatID)
-			return
-		}
-		// Для других моделей оверсайз недоступен: принудительно false и сразу показываем рекомендации
-		state.Oversize = false
-		showRecommendations(bot, chatID, state)
-		delete(userStates, chatID)
-		return
+        state.ChestSize = chestSize
+        state.Step = 5
+        askOversizeQuestion(bot, chatID)
+        return
 
-	case 4:
+    case 5:
 		response := strings.ToLower(message.Text)
 		switch response {
 		case "да", "yes":
@@ -628,6 +641,10 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 			bot.Send(msg)
 			return
 		}
+        // Сохраняем имя/фамилию в тикет (если уже создан)
+        if ticketID, exists := userTickets[chatID]; exists {
+            updateTicketUserInfo(ticketID, message.From.UserName, state.FirstName, state.LastName)
+        }
 		showRecommendations(bot, chatID, state)
 		delete(userStates, chatID)
 	}
@@ -732,18 +749,33 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 		log.Printf("Ошибка отправки рекомендаций: %v", err)
 	}
 
-	// Пробуем записать данные в активный тикет пользователя (если есть)
-	if ticketID, exists := userTickets[chatID]; exists {
-		if t, ok := tickets[ticketID]; ok {
-			t.Height = state.Height
-			t.ChestSize = state.ChestSize
-			t.Oversize = oversize
-			mark, _ := getSizeInfo(state.ChestSize, oversize)
-			t.RecommendedSize = mark
-			t.LastMessage = time.Now()
-			saveTickets()
-		}
-	}
+    // Пробуем записать данные в активный тикет пользователя (если есть)
+    if ticketID, exists := userTickets[chatID]; exists {
+        if t, ok := tickets[ticketID]; ok {
+            if state.ForSelf != nil && *state.ForSelf {
+                t.Height = state.Height
+                t.ChestSize = state.ChestSize
+                t.Oversize = oversize
+            } else {
+                t.OtherHeight = state.Height
+                t.OtherChestSize = state.ChestSize
+                t.OtherOversize = oversize
+            }
+            mark, _ := getSizeInfo(state.ChestSize, oversize)
+            if state.ForSelf != nil && *state.ForSelf {
+                t.RecommendedSize = mark
+            } else {
+                t.RecommendedOtherSize = mark
+            }
+            // если имя/фамилия были собраны — обновим
+            if state.FirstName != "" || state.LastName != "" {
+                t.FirstName = state.FirstName
+                t.LastName = state.LastName
+            }
+            t.LastMessage = time.Now()
+            saveTickets()
+        }
+    }
 }
 
 // getSizeInfo возвращает маркировку и российский размер по таблице, учитывая оверсайз

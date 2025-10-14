@@ -13,78 +13,115 @@ import (
 
 // exportUsersExcel формирует Excel со сводной информацией по пользователям (по данным тикетов)
 func exportUsersExcel() (*bytes.Buffer, error) {
-	f := excelize.NewFile()
-	sheet := f.GetSheetName(0)
+    f := excelize.NewFile()
+    sheet := f.GetSheetName(0)
 
-	headers := []string{"UserID", "Username", "FirstName", "LastName", "TicketsCount", "OpenTickets", "ClosedTickets", "LastMessageAt"}
-	for i, h := range headers {
-		cell, _ := excelize.CoordinatesToCellName(i+1, 1)
-		f.SetCellValue(sheet, cell, h)
-	}
+    // Требуемые поля по пользователю из всех тикетов (берём наиболее актуальные значения)
+    headers := []string{"user_id", "username", "first_name", "last_name", "height", "chest_size", "oversize", "recommended_size", "recommended_other_size", "другие"}
+    for i, h := range headers {
+        cell, _ := excelize.CoordinatesToCellName(i+1, 1)
+        f.SetCellValue(sheet, cell, h)
+    }
 
-	// агрегируем по пользователям
-	type userAgg struct {
-		UserID        int64
-		Username      string
-		FirstName     string
-		LastName      string
-		TicketsCount  int
-		OpenTickets   int
-		ClosedTickets int
-		LastMessageAt time.Time
-	}
-	agg := map[int64]*userAgg{}
-	for _, t := range tickets {
-		ua, ok := agg[t.UserID]
-		if !ok {
-			ua = &userAgg{UserID: t.UserID}
-			agg[t.UserID] = ua
-		}
-		if t.Username != "" {
-			ua.Username = t.Username
-		}
-		if t.FirstName != "" {
-			ua.FirstName = t.FirstName
-		}
-		if t.LastName != "" {
-			ua.LastName = t.LastName
-		}
-		ua.TicketsCount++
-		switch t.Status {
-		case "open":
-			ua.OpenTickets++
-		case "closed":
-			ua.ClosedTickets++
-		}
-		if t.LastMessage.After(ua.LastMessageAt) {
-			ua.LastMessageAt = t.LastMessage
-		}
-	}
+    type userRow struct {
+        UserID          int64
+        Username        string
+        FirstName       string
+        LastName        string
+        Height          int
+        ChestSize       int
+        Oversize        bool
+        RecommendedSize string
+        LastMessageAt   time.Time
+        // "для другого"
+        OtherHeight     int
+        OtherChestSize  int
+        OtherOversize   *bool
+        RecommendedOtherSize string
+    }
+    // Берём по каждому пользователю данные из самого "свежего" тикета (по LastMessage)
+    best := map[int64]*userRow{}
+    for _, t := range tickets {
+        ur, ok := best[t.UserID]
+        if !ok {
+            ur = &userRow{UserID: t.UserID}
+            best[t.UserID] = ur
+        }
+        // если этот тикет новее — перезапишем агрегированные пользовательские поля
+        if t.LastMessage.After(ur.LastMessageAt) {
+            ur.LastMessageAt = t.LastMessage
+            ur.Username = t.Username
+            ur.FirstName = t.FirstName
+            ur.LastName = t.LastName
+            ur.Height = t.Height
+            ur.ChestSize = t.ChestSize
+            ur.Oversize = t.Oversize
+            ur.RecommendedSize = strings.ToLower(strings.TrimSpace(t.RecommendedSize))
+            ur.RecommendedOtherSize = strings.ToLower(strings.TrimSpace(t.RecommendedOtherSize))
+            // другие
+            ur.OtherHeight = t.OtherHeight
+            ur.OtherChestSize = t.OtherChestSize
+            if t.OtherHeight > 0 || t.OtherChestSize > 0 || t.OtherOversize {
+                v := t.OtherOversize
+                ur.OtherOversize = &v
+            } else {
+                ur.OtherOversize = nil
+            }
+        }
+        // если тикет не новее, но в нём есть непустые поля, которых ещё нет — мягко донаполняем
+        if ur.Username == "" && t.Username != "" { ur.Username = t.Username }
+        if ur.FirstName == "" && t.FirstName != "" { ur.FirstName = t.FirstName }
+        if ur.LastName == "" && t.LastName != "" { ur.LastName = t.LastName }
+        if ur.Height == 0 && t.Height > 0 { ur.Height = t.Height }
+        if ur.ChestSize == 0 && t.ChestSize > 0 { ur.ChestSize = t.ChestSize }
+        if !ur.Oversize && t.Oversize { ur.Oversize = true }
+        if ur.RecommendedSize == "" && strings.TrimSpace(t.RecommendedSize) != "" {
+            ur.RecommendedSize = strings.ToLower(strings.TrimSpace(t.RecommendedSize))
+        }
+        if ur.RecommendedOtherSize == "" && strings.TrimSpace(t.RecommendedOtherSize) != "" {
+            ur.RecommendedOtherSize = strings.ToLower(strings.TrimSpace(t.RecommendedOtherSize))
+        }
+        if ur.OtherHeight == 0 && t.OtherHeight > 0 { ur.OtherHeight = t.OtherHeight }
+        if ur.OtherChestSize == 0 && t.OtherChestSize > 0 { ur.OtherChestSize = t.OtherChestSize }
+        if ur.OtherOversize == nil && (t.OtherHeight > 0 || t.OtherChestSize > 0 || t.OtherOversize) {
+            v := t.OtherOversize
+            ur.OtherOversize = &v
+        }
+    }
 
-	// отсортируем по LastMessageAt desc
-	rows := make([]*userAgg, 0, len(agg))
-	for _, v := range agg {
-		rows = append(rows, v)
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].LastMessageAt.After(rows[j].LastMessageAt) })
+    // отсортируем пользователей по времени последнего сообщения desc
+    rows := make([]*userRow, 0, len(best))
+    for _, v := range best { rows = append(rows, v) }
+    sort.Slice(rows, func(i, j int) bool { return rows[i].LastMessageAt.After(rows[j].LastMessageAt) })
 
-	for r, ua := range rows {
-		rowIdx := r + 2
-		f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIdx), ua.UserID)
-		f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIdx), ua.Username)
-		f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIdx), ua.FirstName)
-		f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIdx), ua.LastName)
-		f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIdx), ua.TicketsCount)
-		f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIdx), ua.OpenTickets)
-		f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIdx), ua.ClosedTickets)
-		f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIdx), ua.LastMessageAt.Format("2006-01-02 15:04:05"))
-	}
+    for r, ur := range rows {
+        rowIdx := r + 2
+        f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIdx), ur.UserID)
+        f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIdx), ur.Username)
+        f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIdx), ur.FirstName)
+        f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIdx), ur.LastName)
+        f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIdx), ur.Height)
+        f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIdx), ur.ChestSize)
+        f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIdx), ur.Oversize)
+        f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIdx), ur.RecommendedSize)
+        f.SetCellValue(sheet, fmt.Sprintf("I%d", rowIdx), ur.RecommendedOtherSize)
+        // Колонка "другие": агрегированная строка
+        var parts []string
+        if ur.OtherHeight > 0 { parts = append(parts, fmt.Sprintf("рост=%d", ur.OtherHeight)) }
+        if ur.OtherChestSize > 0 { parts = append(parts, fmt.Sprintf("обхват груди=%d", ur.OtherChestSize)) }
+        if ur.OtherOversize != nil {
+            yn := "N"
+            if *ur.OtherOversize { yn = "Y" }
+            parts = append(parts, fmt.Sprintf("оверсайз=%s", yn))
+        }
+        if len(parts) > 0 {
+            f.SetCellValue(sheet, fmt.Sprintf("J%d", rowIdx), strings.Join(parts, "; "))
+        }
+    }
 
-	buf, err := f.WriteToBuffer()
-	if err != nil {
-		return nil, err
-	}
-	return buf, nil
+    buf, err := f.WriteToBuffer()
+    if err != nil { return nil, err }
+    return buf, nil
 }
 
 // exportAllTicketsExcel формирует Excel со всеми тикетами

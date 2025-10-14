@@ -63,6 +63,11 @@
    ```
    TELEGRAM_BOT_TOKEN=ваш_токен_здесь
    MANAGER_ID=ваш_telegram_id_здесь
+   MANAGER_ID2=второй_id
+   MANAGER_ID3=третий_id
+   # Альтернатива: для нескольких менеджеров используйте запятую:
+   # MANAGER_IDS=123,456
+   # На Render читаются MANAGER_ID/2/3 и/или MANAGER_IDS (поддерживаются также Manager_ID(S)/manager_id(s))
    PORT=8080
    ```
 3. Установите зависимости:

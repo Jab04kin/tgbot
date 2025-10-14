@@ -34,7 +34,12 @@ type Ticket struct {
 	Height          int       `json:"height"`
 	ChestSize       int       `json:"chest_size"`
 	Oversize        bool      `json:"oversize"`
+    // Данные для случая, когда подбор делается не для себя, а для другого
+    OtherHeight     int       `json:"other_height"`
+    OtherChestSize  int       `json:"other_chest_size"`
+    OtherOversize   bool      `json:"other_oversize"`
 	RecommendedSize string    `json:"recommended_size"`
+    RecommendedOtherSize string `json:"recommended_other_size"`
 	Question        string    `json:"question"`
 	Status          string    `json:"status"` // "open", "closed"
 	CreatedAt       time.Time `json:"created_at"`
@@ -50,16 +55,21 @@ func saveTickets() {
 		return
 	}
 
-	err = os.WriteFile("tickets.json", data, 0644)
+    err = writeData("tickets.json", data)
 	if err != nil {
 		log.Printf("Ошибка сохранения тикетов: %v", err)
 	} else {
 		log.Printf("Тикеты сохранены в файл")
 	}
+
+    // Параллельно пересохраняем агрегированные данные пользователей
+    if err := saveUsersJSON(); err != nil {
+        log.Printf("Ошибка сохранения users.json: %v", err)
+    }
 }
 
 func loadTickets() {
-	data, err := os.ReadFile("tickets.json")
+    data, err := readData("tickets.json")
 	if err != nil {
 		log.Printf("Файл тикетов не найден, начинаем с пустого списка")
 		return
@@ -93,6 +103,112 @@ func loadTickets() {
 	}
 
 	log.Printf("Загружено %d тикетов из файла", len(tickets))
+
+    // Построим users.json при старте, чтобы был актуальный слепок
+    if err := saveUsersJSON(); err != nil {
+        log.Printf("Ошибка первичного сохранения users.json: %v", err)
+    }
+}
+
+// ===== Агрегированный файл пользователей (users.json) =====
+
+type UserInfo struct {
+    ID                   int    `json:"id"`
+    UserID               int64  `json:"user_id"`
+    Username             string `json:"username"`
+    FirstName            string `json:"first_name"`
+    LastName             string `json:"last_name"`
+    Height               int    `json:"height"`
+    ChestSize            int    `json:"chest_size"`
+    Oversize             bool   `json:"oversize"`
+    RecommendedSize      string `json:"recommended_size"`
+    OtherHeight          int    `json:"other_height"`
+    OtherChestSize       int    `json:"other_chest_size"`
+    OtherOversize        bool   `json:"other_oversize"`
+    RecommendedOtherSize string `json:"recommended_other_size"`
+}
+
+// buildUsersAggregate собирает по всем тикетам наиболее актуальные данные на пользователя
+func buildUsersAggregate() []UserInfo {
+    type agg struct {
+        info          UserInfo
+        lastMessageAt time.Time
+        haveOther     bool
+    }
+    m := map[int64]*agg{}
+    for _, t := range tickets {
+        a, ok := m[t.UserID]
+        if !ok {
+            a = &agg{info: UserInfo{UserID: t.UserID}}
+            m[t.UserID] = a
+        }
+        // если этот тикет свежее — заменим срез полей целиком
+        if t.LastMessage.After(a.lastMessageAt) {
+            a.lastMessageAt = t.LastMessage
+            a.info.Username = t.Username
+            a.info.FirstName = t.FirstName
+            a.info.LastName = t.LastName
+            a.info.Height = t.Height
+            a.info.ChestSize = t.ChestSize
+            a.info.Oversize = t.Oversize
+            a.info.RecommendedSize = t.RecommendedSize
+            a.info.OtherHeight = t.OtherHeight
+            a.info.OtherChestSize = t.OtherChestSize
+            a.info.OtherOversize = t.OtherOversize
+            a.info.RecommendedOtherSize = t.RecommendedOtherSize
+            a.haveOther = (t.OtherHeight > 0 || t.OtherChestSize > 0 || t.OtherOversize)
+        } else {
+            // мягкое донаполнение пустых значений
+            if a.info.Username == "" && t.Username != "" { a.info.Username = t.Username }
+            if a.info.FirstName == "" && t.FirstName != "" { a.info.FirstName = t.FirstName }
+            if a.info.LastName == "" && t.LastName != "" { a.info.LastName = t.LastName }
+            if a.info.Height == 0 && t.Height > 0 { a.info.Height = t.Height }
+            if a.info.ChestSize == 0 && t.ChestSize > 0 { a.info.ChestSize = t.ChestSize }
+            if !a.info.Oversize && t.Oversize { a.info.Oversize = true }
+            if a.info.RecommendedSize == "" && t.RecommendedSize != "" { a.info.RecommendedSize = t.RecommendedSize }
+            if !a.haveOther && (t.OtherHeight > 0 || t.OtherChestSize > 0 || t.OtherOversize) {
+                a.info.OtherHeight = t.OtherHeight
+                a.info.OtherChestSize = t.OtherChestSize
+                a.info.OtherOversize = t.OtherOversize
+                a.info.RecommendedOtherSize = t.RecommendedOtherSize
+                a.haveOther = true
+            } else {
+                if a.info.OtherHeight == 0 && t.OtherHeight > 0 { a.info.OtherHeight = t.OtherHeight; a.haveOther = true }
+                if a.info.OtherChestSize == 0 && t.OtherChestSize > 0 { a.info.OtherChestSize = t.OtherChestSize; a.haveOther = true }
+                if !a.info.OtherOversize && t.OtherOversize { a.info.OtherOversize = true; a.haveOther = true }
+                if a.info.RecommendedOtherSize == "" && t.RecommendedOtherSize != "" { a.info.RecommendedOtherSize = t.RecommendedOtherSize }
+            }
+        }
+    }
+
+    // Преобразуем в слайс и отсортируем по времени убыванию
+    type pair struct{ uid int64; a *agg }
+    arr := make([]pair, 0, len(m))
+    for uid, a := range m { arr = append(arr, pair{uid, a}) }
+    // сортировка вручную без импортов sort здесь не требуется, но оставим порядок не определённым
+
+    // Присвоим последовательные ID
+    users := make([]UserInfo, 0, len(arr))
+    id := 1
+    for _, p := range arr {
+        ui := p.a.info
+        ui.ID = id
+        users = append(users, ui)
+        id++
+    }
+    return users
+}
+
+func saveUsersJSON() error {
+    users := buildUsersAggregate()
+    data, err := json.MarshalIndent(users, "", "  ")
+    if err != nil {
+        return err
+    }
+    if err := writeData("users.json", data); err != nil {
+        return err
+    }
+    return nil
 }
 
 func createTicketAndAskQuestion(bot *tgbotapi.BotAPI, chatID int64, recommendedSize string) {

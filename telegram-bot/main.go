@@ -102,6 +102,12 @@ func startHTTPServer() {
 		port = "8080"
 	}
 
+	// Корневой маршрут — полезен для внешних пингов/проверок
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "OK")
+	})
+
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "OK")
@@ -120,10 +126,16 @@ func startSelfPing() {
 		pingInterval := 40 * time.Second
 		log.Printf("🔄 Запущен самопинг каждые %v для предотвращения засыпания", pingInterval)
 
-		// helper: получить целевой URL
+		// helper: получить целевой URL (приоритет: SELF_PING_URL -> RENDER_EXTERNAL_URL -> RENDER_URL -> localhost)
 		resolveURL := func() string {
-			if u := os.Getenv("SELF_PING_URL"); u != "" {
-				return u
+			if u := strings.TrimSpace(os.Getenv("SELF_PING_URL")); u != "" {
+				return ensureHealthPath(u)
+			}
+			if u := strings.TrimSpace(os.Getenv("RENDER_EXTERNAL_URL")); u != "" {
+				return ensureHealthPath(u)
+			}
+			if u := strings.TrimSpace(os.Getenv("RENDER_URL")); u != "" {
+				return ensureHealthPath(u)
 			}
 			port := os.Getenv("PORT")
 			if port == "" {
@@ -132,41 +144,82 @@ func startSelfPing() {
 			return fmt.Sprintf("http://localhost:%s/health", port)
 		}
 
-		client := &http.Client{Timeout: 5 * time.Second}
+		// ensureHealthPath добавляет "/health" если путь пуст или корневой
+		ensureHealthPath := func(base string) string {
+			b := strings.TrimSpace(base)
+			if b == "" {
+				return "/health"
+			}
+			// если уже указан конкретный путь (не "/"), оставляем как есть
+			if strings.HasSuffix(b, "/health") || strings.Contains(b, "/health?") {
+				return b
+			}
+			// если это чистый домен/корень — добавим /health
+			if strings.HasSuffix(b, "/") {
+				return b + "health"
+			}
+			// если пути нет (например, https://app.onrender.com)
+			if !strings.Contains(strings.TrimPrefix(b, "http://"), "/") && !strings.Contains(strings.TrimPrefix(b, "https://"), "/") {
+				return b + "/health"
+			}
+			return b
+		}
+
+		client := &http.Client{Timeout: 8 * time.Second}
+
+		// с джиттером, чтобы избежать синхронности между инстансами
+		randomJitter := func(base time.Duration) time.Duration {
+			// ±20% джиттер
+			j := int64(base) / 5
+			n := time.Now().UnixNano()
+			// псевдорандом без глобального источника
+			delta := (n % (2*j)) - j
+			return base + time.Duration(delta)
+		}
 
 		// немедленный пинг при старте
 		func() {
 			url := resolveURL()
-			resp, err := client.Get(url)
-			if err != nil {
-				log.Printf("❌ Ошибка самопинга (старт): %v (URL: %s)", err, url)
-				return
-			}
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				log.Printf("✅ Самопинг успешен (старт): %s", url)
-			} else {
-				log.Printf("⚠️ Самопинг вернул статус (старт): %d для %s", resp.StatusCode, url)
-			}
+			retryPing(client, url)
 		}()
 
-		ticker := time.NewTicker(pingInterval)
+		ticker := time.NewTicker(randomJitter(pingInterval))
 		defer ticker.Stop()
 		for range ticker.C {
 			url := resolveURL()
-			resp, err := client.Get(url)
-			if err != nil {
-				log.Printf("❌ Ошибка самопинга: %v (URL: %s)", err, url)
-				continue
-			}
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				log.Printf("✅ Самопинг успешен: %s", url)
-			} else {
-				log.Printf("⚠️ Самопинг вернул статус: %d для %s", resp.StatusCode, url)
-			}
+			retryPing(client, url)
+			// пересоздаём тикер с новым джиттером
+			ticker.Stop()
+			ticker = time.NewTicker(randomJitter(pingInterval))
 		}
 	}()
+}
+
+// retryPing выполняет до 3 попыток с экспоненциальной задержкой
+func retryPing(client *http.Client, url string) {
+	maxAttempts := 3
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		req, _ := http.NewRequest(http.MethodGet, url, nil)
+		req.Header.Set("User-Agent", "keepalive/1.0")
+		req.Header.Set("X-Render-Keep-Alive", "1")
+		resp, err := client.Do(req)
+		if err == nil {
+			status := resp.StatusCode
+			resp.Body.Close()
+			if status == http.StatusOK {
+				if attempt == 1 {
+					log.Printf("✅ Самопинг успешен: %s", url)
+				} else {
+					log.Printf("✅ Самопинг успешен после %d попыток: %s", attempt, url)
+				}
+				return
+			}
+			log.Printf("⚠️ Самопинг статус %d (попытка %d/%d) для %s", status, attempt, maxAttempts, url)
+		} else {
+			log.Printf("❌ Ошибка самопинга (попытка %d/%d): %v (URL: %s)", attempt, maxAttempts, err, url)
+		}
+		time.Sleep(time.Duration(attempt*attempt) * time.Second)
+	}
 }
 
 func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {

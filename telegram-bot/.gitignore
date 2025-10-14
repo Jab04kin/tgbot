@@ -19,7 +19,6 @@ go.work
 
 # Environment variables
 .env
-.env.example
 .env.local
 
 # Logs

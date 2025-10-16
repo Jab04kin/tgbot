@@ -692,14 +692,13 @@ func handleOversizeCallback(bot *tgbotapi.BotAPI, chatID int64, oversize bool) {
 func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	log.Printf("Показываю рекомендации для чата %d, товар: %s", chatID, state.SelectedTee)
 
-    // Допускаем пустой SelectedTee — используем товар по умолчанию (индекс 0)
+    // Автовыбор модели по ответу об оверсайзе: если Да — берём модель с поддержкой оверсайз (индекс 0),
+    // если Нет — берём обычную модель (индекс 1 при наличии, иначе 0)
     teeIndex := 0
-    if state.SelectedTee != "" {
-        if idx, err := strconv.Atoi(state.SelectedTee); err == nil && idx >= 0 && idx < len(products) {
-            teeIndex = idx
-        } else {
-            log.Printf("Предупреждение: неверный SelectedTee '%s' для чата %d, используем 0", state.SelectedTee, chatID)
-        }
+    if state.Oversize {
+        teeIndex = 0
+    } else if len(products) > 1 {
+        teeIndex = 1
     }
 
     product := products[teeIndex]

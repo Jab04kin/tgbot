@@ -22,6 +22,7 @@ type UserState struct {
 	RecommendedSize string
     FirstName       string
     LastName        string
+    DopName         string
     ForSelf         *bool
 }
 
@@ -186,14 +187,12 @@ func startSelfPing() {
 			retryPing(client, url)
 		}()
 
-		ticker := time.NewTicker(randomJitter(pingInterval))
-		defer ticker.Stop()
-		for range ticker.C {
+		for {
+			// Ждём с джиттером
+			time.Sleep(randomJitter(pingInterval))
+			
 			url := resolveURL()
 			retryPing(client, url)
-			// пересоздаём тикер с новым джиттером
-			ticker.Stop()
-			ticker = time.NewTicker(randomJitter(pingInterval))
 		}
 	}()
 }
@@ -276,9 +275,9 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			if _, exists := userTickets[chatID]; !exists {
 				createTicketAndAskQuestion(bot, chatID, "Не определен")
 			}
-			if ticketID, ok := userTickets[chatID]; ok {
-				updateTicketUserInfo(ticketID, message.From.UserName, providedName, "")
-			}
+            if ticketID, ok := userTickets[chatID]; ok {
+                updateTicketUserInfo(ticketID, message.From.UserName, providedName, "", "")
+            }
 			delete(nameCollectState, chatID)
 			bot.Send(tgbotapi.NewMessage(chatID, "Спасибо! Теперь напишите ваш вопрос менеджеру."))
 			// Включаем режим диалога
@@ -424,6 +423,14 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 				bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка формирования файла"))
 			}
 		}
+	case "manager_export_users_xml":
+		if isManagerUser(callback.From) {
+			if buf, err := exportUsersXML(); err == nil {
+				sendExcelBuffer(bot, chatID, "users.xml", buf)
+			} else {
+				bot.Send(tgbotapi.NewMessage(chatID, "❌ Ошибка формирования файла"))
+			}
+		}
 	case "manager_export_tickets":
 		if isManagerUser(callback.From) {
 			if buf, err := exportAllTicketsExcel(); err == nil {
@@ -550,8 +557,8 @@ func startSurvey(bot *tgbotapi.BotAPI, chatID int64) {
 	log.Printf("Начинаю опрос для чата %d", chatID)
     userStates[chatID] = &UserState{Step: 1}
 
-    // Шаг 1: запрос имени и фамилии
-    msg := tgbotapi.NewMessage(chatID, "Укажите ваше имя и фамилию?")
+    // Шаг 1: запрос ФИО
+    msg := tgbotapi.NewMessage(chatID, "Введите ваше ФИО (Фамилия Имя Отчество). Если отчества нет, напишите только фамилию и имя.")
 	if _, err := bot.Send(msg); err != nil {
 		log.Printf("Ошибка отправки сообщения: %v", err)
 		return
@@ -564,19 +571,23 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 
 	switch state.Step {
     case 1:
-        // Ожидаем: Имя и Фамилия
+        // Ожидаем: ФИО (Фамилия Имя Отчество?)
         full := strings.TrimSpace(message.Text)
         if full == "" {
-            bot.Send(tgbotapi.NewMessage(chatID, "Пожалуйста, укажите имя и фамилию"))
+            bot.Send(tgbotapi.NewMessage(chatID, "Пожалуйста, укажите ФИО"))
             return
         }
         parts := strings.Fields(full)
         if len(parts) < 2 {
-            bot.Send(tgbotapi.NewMessage(chatID, "Укажите и имя, и фамилию"))
+            bot.Send(tgbotapi.NewMessage(chatID, "Укажите минимум фамилию и имя"))
             return
         }
-        state.FirstName = parts[0]
-        state.LastName = strings.Join(parts[1:], " ")
+        // Интерпретируем как: Фамилия Имя [Отчество]
+        state.LastName = parts[0]
+        state.FirstName = parts[1]
+        if len(parts) > 2 {
+            state.DopName = strings.Join(parts[2:], " ")
+        }
         state.Step = 2
         // Шаг 2: выбираете ли вы для себя?
         prompt := tgbotapi.NewMessage(chatID, "Выбираете ли вы для себя?")
@@ -643,7 +654,7 @@ func handleSurveyResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message, state
 		}
         // Сохраняем имя/фамилию в тикет (если уже создан)
         if ticketID, exists := userTickets[chatID]; exists {
-            updateTicketUserInfo(ticketID, message.From.UserName, state.FirstName, state.LastName)
+            updateTicketUserInfo(ticketID, message.From.UserName, state.FirstName, state.LastName, state.DopName)
         }
 		showRecommendations(bot, chatID, state)
 		delete(userStates, chatID)
@@ -767,10 +778,11 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
             } else {
                 t.RecommendedOtherSize = mark
             }
-            // если имя/фамилия были собраны — обновим
-            if state.FirstName != "" || state.LastName != "" {
+            // если ФИО было собрано — обновим
+            if state.FirstName != "" || state.LastName != "" || state.DopName != "" {
                 t.FirstName = state.FirstName
                 t.LastName = state.LastName
+                t.DopName = state.DopName
             }
             t.LastMessage = time.Now()
             saveTickets()
@@ -1113,8 +1125,8 @@ func handleClientTicketMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) 
 	// Добавляем сообщение клиента в тикет
 	addMessageToTicket(ticketID, chatID, message.Text, false)
 
-	// Обновляем данные пользователя в тикете
-	updateTicketUserInfo(ticketID, message.From.UserName, message.From.FirstName, message.From.LastName)
+    // Обновляем данные пользователя в тикете
+    updateTicketUserInfo(ticketID, message.From.UserName, message.From.FirstName, message.From.LastName, "")
 
 	// Отправляем сообщение менеджеру
 	messageText := fmt.Sprintf("💬 Новое сообщение от клиента (тикет #%d):\n\n%s", ticketID, message.Text)

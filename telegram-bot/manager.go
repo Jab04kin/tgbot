@@ -103,10 +103,13 @@ func handleManagerHelpCallback(bot *tgbotapi.BotAPI, chatID int64) {
 
 // Меню экспорта статистики
 func handleManagerExportMenu(bot *tgbotapi.BotAPI, chatID int64) {
-	msg := tgbotapi.NewMessage(chatID, "📊 Экспорт статистики в Excel:\n\nВыберите, что выгрузить:")
+	msg := tgbotapi.NewMessage(chatID, "📊 Экспорт статистики:\n\nВыберите формат и данные для выгрузки:")
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("1) Пользователи", "manager_export_users"),
+			tgbotapi.NewInlineKeyboardButtonData("1) Пользователи (Excel)", "manager_export_users"),
+		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("1) Пользователи (XML)", "manager_export_users_xml"),
 		),
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("2) Все тикеты", "manager_export_tickets"),

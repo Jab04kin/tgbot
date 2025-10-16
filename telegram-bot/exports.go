@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/xml"
 	"fmt"
 	"sort"
 	"strings"
@@ -16,8 +17,8 @@ func exportUsersExcel() (*bytes.Buffer, error) {
     f := excelize.NewFile()
     sheet := f.GetSheetName(0)
 
-    // Требуемые поля по пользователю из всех тикетов (берём наиболее актуальные значения)
-    headers := []string{"user_id", "username", "first_name", "last_name", "height", "chest_size", "oversize", "recommended_size", "recommended_other_size", "другие"}
+    // Требуемые столбцы заказчика
+    headers := []string{"id", "username", "ФИО", "Рост", "Размер груди", "Оверсайз", "Рекомендованный размер", "Размеры для другого", "Рекомендованный размер для другого"}
     for i, h := range headers {
         cell, _ := excelize.CoordinatesToCellName(i+1, 1)
         f.SetCellValue(sheet, cell, h)
@@ -89,34 +90,33 @@ func exportUsersExcel() (*bytes.Buffer, error) {
         }
     }
 
-    // отсортируем пользователей по времени последнего сообщения desc
-    rows := make([]*userRow, 0, len(best))
-    for _, v := range best { rows = append(rows, v) }
-    sort.Slice(rows, func(i, j int) bool { return rows[i].LastMessageAt.After(rows[j].LastMessageAt) })
+    users := buildUsersAggregate()
+    sort.Slice(users, func(i, j int) bool { return users[i].UserID < users[j].UserID })
 
-    for r, ur := range rows {
+    for r, u := range users {
         rowIdx := r + 2
-        f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIdx), ur.UserID)
-        f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIdx), ur.Username)
-        f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIdx), ur.FirstName)
-        f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIdx), ur.LastName)
-        f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIdx), ur.Height)
-        f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIdx), ur.ChestSize)
-        f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIdx), ur.Oversize)
-        f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIdx), ur.RecommendedSize)
-        f.SetCellValue(sheet, fmt.Sprintf("I%d", rowIdx), ur.RecommendedOtherSize)
-        // Колонка "другие": агрегированная строка
-        var parts []string
-        if ur.OtherHeight > 0 { parts = append(parts, fmt.Sprintf("рост=%d", ur.OtherHeight)) }
-        if ur.OtherChestSize > 0 { parts = append(parts, fmt.Sprintf("обхват груди=%d", ur.OtherChestSize)) }
-        if ur.OtherOversize != nil {
-            yn := "N"
-            if *ur.OtherOversize { yn = "Y" }
-            parts = append(parts, fmt.Sprintf("оверсайз=%s", yn))
+        fio := strings.TrimSpace(strings.Join([]string{strings.TrimSpace(u.LastName), strings.TrimSpace(u.FirstName), strings.TrimSpace(u.DopName)}, " "))
+        fio = strings.TrimSpace(strings.ReplaceAll(fio, "  ", " "))
+        // Соберём строку "Размеры для другого" в требуемом формате
+        var otherParts []string
+        if u.OtherHeight > 0 { otherParts = append(otherParts, fmt.Sprintf("Рост: %d", u.OtherHeight)) }
+        if u.OtherChestSize > 0 { otherParts = append(otherParts, fmt.Sprintf("Размер груди: %d", u.OtherChestSize)) }
+        if u.OtherHeight > 0 || u.OtherChestSize > 0 || u.OtherOversize {
+            yn := "Нет"
+            if u.OtherOversize { yn = "Да" }
+            otherParts = append(otherParts, fmt.Sprintf("Оверсайз: %s", yn))
         }
-        if len(parts) > 0 {
-            f.SetCellValue(sheet, fmt.Sprintf("J%d", rowIdx), strings.Join(parts, "; "))
-        }
+        otherCombined := strings.Join(otherParts, ", ")
+
+        f.SetCellValue(sheet, fmt.Sprintf("A%d", rowIdx), u.UserID)
+        f.SetCellValue(sheet, fmt.Sprintf("B%d", rowIdx), u.Username)
+        f.SetCellValue(sheet, fmt.Sprintf("C%d", rowIdx), fio)
+        f.SetCellValue(sheet, fmt.Sprintf("D%d", rowIdx), u.Height)
+        f.SetCellValue(sheet, fmt.Sprintf("E%d", rowIdx), u.ChestSize)
+        f.SetCellValue(sheet, fmt.Sprintf("F%d", rowIdx), func() string { if u.Oversize { return "Да" } else { return "Нет" } }())
+        f.SetCellValue(sheet, fmt.Sprintf("G%d", rowIdx), u.RecommendedSize)
+        f.SetCellValue(sheet, fmt.Sprintf("H%d", rowIdx), otherCombined)
+        f.SetCellValue(sheet, fmt.Sprintf("I%d", rowIdx), u.RecommendedOtherSize)
     }
 
     buf, err := f.WriteToBuffer()
@@ -275,6 +275,76 @@ func exportSingleTicketExcel(ticketID int) (*bytes.Buffer, error) {
 		return nil, err
 	}
 	return buf, nil
+}
+
+// XML структуры для экспорта пользователей
+type UsersXML struct {
+	XMLName xml.Name     `xml:"users"`
+	Users   []UserXML    `xml:"user"`
+}
+
+type UserXML struct {
+	XMLName                xml.Name `xml:"user"`
+	ID                     int64    `xml:"id"`
+	Username               string   `xml:"username"`
+	FIO                    string   `xml:"fio"`
+	Height                 int      `xml:"height"`
+	ChestSize              int      `xml:"chest_size"`
+	Oversize               string   `xml:"oversize"`
+	RecommendedSize        string   `xml:"recommended_size"`
+	OtherSizes             string   `xml:"other_sizes"`
+	OtherRecommendedSize   string   `xml:"other_recommended_size"`
+}
+
+// exportUsersXML формирует XML со сводной информацией по пользователям
+func exportUsersXML() (*bytes.Buffer, error) {
+	users := buildUsersAggregate()
+	sort.Slice(users, func(i, j int) bool { return users[i].UserID < users[j].UserID })
+
+	var xmlUsers []UserXML
+	for _, u := range users {
+		fio := strings.TrimSpace(strings.Join([]string{strings.TrimSpace(u.LastName), strings.TrimSpace(u.FirstName), strings.TrimSpace(u.DopName)}, " "))
+		fio = strings.TrimSpace(strings.ReplaceAll(fio, "  ", " "))
+
+		// Соберём строку "Размеры для другого" в требуемом формате
+		var otherParts []string
+		if u.OtherHeight > 0 { otherParts = append(otherParts, fmt.Sprintf("Рост: %d", u.OtherHeight)) }
+		if u.OtherChestSize > 0 { otherParts = append(otherParts, fmt.Sprintf("Размер груди: %d", u.OtherChestSize)) }
+		if u.OtherHeight > 0 || u.OtherChestSize > 0 || u.OtherOversize {
+			yn := "Нет"
+			if u.OtherOversize { yn = "Да" }
+			otherParts = append(otherParts, fmt.Sprintf("Оверсайз: %s", yn))
+		}
+		otherCombined := strings.Join(otherParts, ", ")
+
+		oversizeStr := "Нет"
+		if u.Oversize { oversizeStr = "Да" }
+
+		xmlUser := UserXML{
+			ID:                   u.UserID,
+			Username:             u.Username,
+			FIO:                  fio,
+			Height:               u.Height,
+			ChestSize:            u.ChestSize,
+			Oversize:             oversizeStr,
+			RecommendedSize:      u.RecommendedSize,
+			OtherSizes:           otherCombined,
+			OtherRecommendedSize: u.RecommendedOtherSize,
+		}
+		xmlUsers = append(xmlUsers, xmlUser)
+	}
+
+	usersXML := UsersXML{Users: xmlUsers}
+	
+	var buf bytes.Buffer
+	buf.WriteString(xml.Header)
+	encoder := xml.NewEncoder(&buf)
+	encoder.Indent("", "  ")
+	if err := encoder.Encode(usersXML); err != nil {
+		return nil, err
+	}
+
+	return &buf, nil
 }
 
 func sendExcelBuffer(bot *tgbotapi.BotAPI, chatID int64, filename string, buf *bytes.Buffer) {

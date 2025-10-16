@@ -30,6 +30,7 @@ type Ticket struct {
 	Username        string    `json:"username"`
 	FirstName       string    `json:"first_name"`
 	LastName        string    `json:"last_name"`
+    DopName         string    `json:"dop_name"`
 	Height          int       `json:"height"`
 	ChestSize       int       `json:"chest_size"`
 	Oversize        bool      `json:"oversize"`
@@ -117,6 +118,7 @@ type UserInfo struct {
     Username             string `json:"username"`
     FirstName            string `json:"first_name"`
     LastName             string `json:"last_name"`
+    DopName              string `json:"dop_name"`
     Height               int    `json:"height"`
     ChestSize            int    `json:"chest_size"`
     Oversize             bool   `json:"oversize"`
@@ -147,6 +149,7 @@ func buildUsersAggregate() []UserInfo {
             a.info.Username = t.Username
             a.info.FirstName = t.FirstName
             a.info.LastName = t.LastName
+            a.info.DopName = t.DopName
             a.info.Height = t.Height
             a.info.ChestSize = t.ChestSize
             a.info.Oversize = t.Oversize
@@ -161,6 +164,7 @@ func buildUsersAggregate() []UserInfo {
             if a.info.Username == "" && t.Username != "" { a.info.Username = t.Username }
             if a.info.FirstName == "" && t.FirstName != "" { a.info.FirstName = t.FirstName }
             if a.info.LastName == "" && t.LastName != "" { a.info.LastName = t.LastName }
+            if a.info.DopName == "" && t.DopName != "" { a.info.DopName = t.DopName }
             if a.info.Height == 0 && t.Height > 0 { a.info.Height = t.Height }
             if a.info.ChestSize == 0 && t.ChestSize > 0 { a.info.ChestSize = t.ChestSize }
             if !a.info.Oversize && t.Oversize { a.info.Oversize = true }
@@ -313,7 +317,7 @@ func addMessageToTicket(ticketID int, senderID int64, text string, isFromManager
 }
 
 // updateTicketUserInfo обновляет информацию о пользователе в тикете
-func updateTicketUserInfo(ticketID int, username, firstName, lastName string) {
+func updateTicketUserInfo(ticketID int, username, firstName, lastName, dopName string) {
 	ticket, exists := tickets[ticketID]
 	if !exists {
 		log.Printf("Тикет #%d не найден для обновления информации", ticketID)
@@ -323,6 +327,7 @@ func updateTicketUserInfo(ticketID int, username, firstName, lastName string) {
 	ticket.Username = username
 	ticket.FirstName = firstName
 	ticket.LastName = lastName
+    ticket.DopName = dopName
 
 	saveTickets()
 	log.Printf("Информация пользователя обновлена в тикете #%d", ticketID)
@@ -367,8 +372,8 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 	var messageText string
 	if ticket.Height > 0 && ticket.ChestSize > 0 {
 		// Есть данные подбора размера
-		messageText = fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
-			"👤 Клиент: %s %s (@%s)\n"+
+            messageText = fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
+            "👤 Клиент: %s %s %s (@%s)\n"+
 			"🆔 ID: %d\n"+
 			"📏 Рост: %d см\n"+
 			"📐 Обхват груди: %d см\n"+
@@ -377,8 +382,9 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 			"🕐 Создан: %s\n\n"+
 			"💬 Ответьте клиенту текстом или используйте кнопки для управления тикетом",
 			ticket.ID,
-			ticket.FirstName,
-			ticket.LastName,
+            ticket.LastName,
+            ticket.FirstName,
+            ticket.DopName,
 			ticket.Username,
 			ticket.UserID,
 			ticket.Height,
@@ -388,8 +394,8 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 			ticket.CreatedAt.Format("15:04 02.01.2006"))
 	} else {
 		// Нет данных подбора размера
-		messageText = fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
-			"👤 Клиент: %s %s (@%s)\n"+
+            messageText = fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
+            "👤 Клиент: %s %s %s (@%s)\n"+
 			"🆔 ID: %d\n"+
 			"📏 Рост: Не указан\n"+
 			"📐 Обхват груди: Не указан\n"+
@@ -398,8 +404,9 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 			"🕐 Создан: %s\n\n"+
 			"💬 Ответьте клиенту текстом или используйте кнопки для управления тикетом",
 			ticket.ID,
-			ticket.FirstName,
-			ticket.LastName,
+            ticket.LastName,
+            ticket.FirstName,
+            ticket.DopName,
 			ticket.Username,
 			ticket.UserID,
 			ticket.RecommendedSize,
@@ -566,16 +573,16 @@ func showTicketDetails(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 	var text string
 	if ticket.Height > 0 && ticket.ChestSize > 0 {
 		// Есть данные подбора размера
-		text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
-			"👤 Клиент: %s %s (@%s)\n"+
+        text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
+            "👤 Клиент: %s %s %s (@%s)\n"+
 			"🆔 ID: %d\n"+
 			"📏 Рост: %d см\n"+
 			"📐 Обхват груди: %d см\n"+
 			"👕 Оверсайз: %s\n"+
 			"✅ Рекомендуемый размер: %s\n"+
 			"🕐 Создан: %s\n",
-			ticket.ID, status,
-			ticket.FirstName, ticket.LastName, ticket.Username,
+            ticket.ID, status,
+            ticket.LastName, ticket.FirstName, ticket.DopName, ticket.Username,
 			ticket.UserID,
 			ticket.Height,
 			ticket.ChestSize,
@@ -584,16 +591,16 @@ func showTicketDetails(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 			ticket.CreatedAt.Format("15:04 02.01.2006"))
 	} else {
 		// Нет данных подбора размера
-		text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
-			"👤 Клиент: %s %s (@%s)\n"+
+        text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
+            "👤 Клиент: %s %s %s (@%s)\n"+
 			"🆔 ID: %d\n"+
 			"📏 Рост: Не указан\n"+
 			"📐 Обхват груди: Не указан\n"+
 			"👕 Оверсайз: Не указан\n"+
 			"✅ Рекомендуемый размер: %s\n"+
 			"🕐 Создан: %s\n",
-			ticket.ID, status,
-			ticket.FirstName, ticket.LastName, ticket.Username,
+            ticket.ID, status,
+            ticket.LastName, ticket.FirstName, ticket.DopName, ticket.Username,
 			ticket.UserID,
 			ticket.RecommendedSize,
 			ticket.CreatedAt.Format("15:04 02.01.2006"))

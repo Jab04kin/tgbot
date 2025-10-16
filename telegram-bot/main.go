@@ -566,6 +566,11 @@ func startSurvey(bot *tgbotapi.BotAPI, chatID int64) {
 	log.Printf("Начинаю опрос для чата %d", chatID)
     userStates[chatID] = &UserState{Step: 1}
 
+    // Создаём тикет для сохранения данных опроса
+    if _, exists := userTickets[chatID]; !exists {
+        createTicketAndAskQuestion(bot, chatID, "Не определен")
+    }
+
     // Шаг 1: запрос ФИО
     msg := tgbotapi.NewMessage(chatID, "Введите ваше ФИО (Фамилия Имя Отчество). Если отчества нет, напишите только фамилию и имя.")
 	if _, err := bot.Send(msg); err != nil {
@@ -757,21 +762,15 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
     // Пробуем записать данные в активный тикет пользователя (если есть)
     if ticketID, exists := userTickets[chatID]; exists {
         if t, ok := tickets[ticketID]; ok {
-            if state.ForSelf != nil && *state.ForSelf {
-                t.Height = state.Height
-                t.ChestSize = state.ChestSize
-                t.Oversize = oversize
-            } else {
-                t.OtherHeight = state.Height
-                t.OtherChestSize = state.ChestSize
-                t.OtherOversize = oversize
-            }
+            // Сохраняем данные опроса в тикет
+            t.Height = state.Height
+            t.ChestSize = state.ChestSize
+            t.Oversize = oversize
+            
+            // Сохраняем рекомендованный размер
             mark, _ := getSizeInfo(state.ChestSize, oversize)
-            if state.ForSelf != nil && *state.ForSelf {
-                t.RecommendedSize = mark
-            } else {
-                t.RecommendedOtherSize = mark
-            }
+            t.RecommendedSize = mark
+            
             // если ФИО было собрано — обновим
             if state.FirstName != "" || state.LastName != "" || state.DopName != "" {
                 t.FirstName = state.FirstName

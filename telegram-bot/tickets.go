@@ -394,8 +394,14 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 			ticket.CreatedAt.Format("15:04 02.01.2006"))
 	} else {
 		// Нет данных подбора размера
-            messageText = fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
-            "👤 Клиент: %s %s %s (@%s)\n"+
+		fio := strings.TrimSpace(strings.Join([]string{ticket.LastName, ticket.FirstName, ticket.DopName}, " "))
+		fio = strings.TrimSpace(strings.ReplaceAll(fio, "  ", " "))
+		if fio == "" {
+			fio = "Не указано"
+		}
+		
+		messageText = fmt.Sprintf("🎫 Новый тикет #%d\n\n"+
+			"👤 Клиент: %s (@%s)\n"+
 			"🆔 ID: %d\n"+
 			"📏 Рост: Не указан\n"+
 			"📐 Обхват груди: Не указан\n"+
@@ -404,9 +410,7 @@ func sendClientCardToManager(bot *tgbotapi.BotAPI, ticket *Ticket) {
 			"🕐 Создан: %s\n\n"+
 			"💬 Ответьте клиенту текстом или используйте кнопки для управления тикетом",
 			ticket.ID,
-            ticket.LastName,
-            ticket.FirstName,
-            ticket.DopName,
+			fio,
 			ticket.Username,
 			ticket.UserID,
 			ticket.RecommendedSize,
@@ -573,16 +577,22 @@ func showTicketDetails(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 	var text string
 	if ticket.Height > 0 && ticket.ChestSize > 0 {
 		// Есть данные подбора размера
-        text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
-            "👤 Клиент: %s %s %s (@%s)\n"+
+		fio := strings.TrimSpace(strings.Join([]string{ticket.LastName, ticket.FirstName, ticket.DopName}, " "))
+		fio = strings.TrimSpace(strings.ReplaceAll(fio, "  ", " "))
+		if fio == "" {
+			fio = "Не указано"
+		}
+		
+		text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
+			"👤 Клиент: %s (@%s)\n"+
 			"🆔 ID: %d\n"+
 			"📏 Рост: %d см\n"+
 			"📐 Обхват груди: %d см\n"+
 			"👕 Оверсайз: %s\n"+
 			"✅ Рекомендуемый размер: %s\n"+
 			"🕐 Создан: %s\n",
-            ticket.ID, status,
-            ticket.LastName, ticket.FirstName, ticket.DopName, ticket.Username,
+			ticket.ID, status,
+			fio, ticket.Username,
 			ticket.UserID,
 			ticket.Height,
 			ticket.ChestSize,
@@ -591,16 +601,22 @@ func showTicketDetails(bot *tgbotapi.BotAPI, chatID int64, ticketID int) {
 			ticket.CreatedAt.Format("15:04 02.01.2006"))
 	} else {
 		// Нет данных подбора размера
-        text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
-            "👤 Клиент: %s %s %s (@%s)\n"+
+		fio := strings.TrimSpace(strings.Join([]string{ticket.LastName, ticket.FirstName, ticket.DopName}, " "))
+		fio = strings.TrimSpace(strings.ReplaceAll(fio, "  ", " "))
+		if fio == "" {
+			fio = "Не указано"
+		}
+		
+		text = fmt.Sprintf("🎫 Тикет #%d %s\n\n"+
+			"👤 Клиент: %s (@%s)\n"+
 			"🆔 ID: %d\n"+
 			"📏 Рост: Не указан\n"+
 			"📐 Обхват груди: Не указан\n"+
 			"👕 Оверсайз: Не указан\n"+
 			"✅ Рекомендуемый размер: %s\n"+
 			"🕐 Создан: %s\n",
-            ticket.ID, status,
-            ticket.LastName, ticket.FirstName, ticket.DopName, ticket.Username,
+			ticket.ID, status,
+			fio, ticket.Username,
 			ticket.UserID,
 			ticket.RecommendedSize,
 			ticket.CreatedAt.Format("15:04 02.01.2006"))

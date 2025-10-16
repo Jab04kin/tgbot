@@ -88,6 +88,16 @@ func initManagers() {
 	if len(managerIDsSet) == 0 && len(managerUsernamesSet) == 0 {
 		log.Printf("Менеджеры не заданы (клиентский режим). Установите MANAGER_ID(S) и/или MANAGER_USERNAMES")
 	}
+    // Диагностика загруженных менеджеров
+    if len(managerIDsSet) > 0 {
+        ids := getManagerIDs()
+        log.Printf("Загружены manager IDs: %v", ids)
+    }
+    if len(managerUsernamesSet) > 0 {
+        var us []string
+        for u := range managerUsernamesSet { us = append(us, u) }
+        log.Printf("Загружены manager usernames: %v", us)
+    }
 	// Persist
 	saveManagersToFile()
 }

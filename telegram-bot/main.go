@@ -242,6 +242,15 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		} else {
 			sendMainMenu(bot, chatID)
 		}
+	case "/manager":
+		// Принудительно открыть меню менеджера, если у пользователя есть права менеджера
+		if isManagerUser(message.From) {
+			sendManagerMenu(bot, chatID)
+		} else {
+			msg := tgbotapi.NewMessage(chatID, "Недостаточно прав. Доступно только для менеджеров.")
+			bot.Send(msg)
+			sendMainMenu(bot, chatID)
+		}
         if isAdminUser(message.From) {
 			// Показать кнопку входа в админку
 			adminMsg := tgbotapi.NewMessage(chatID, "Доступна админ-панель")

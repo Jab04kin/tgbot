@@ -163,6 +163,19 @@ func isManagerUser(user *tgbotapi.User) bool {
 	return false
 }
 
+// isManagerUserActive проверяет, является ли пользователь активным менеджером
+// (не вышел из панели менеджера)
+func isManagerUserActive(user *tgbotapi.User) bool {
+	if user == nil {
+		return false
+	}
+	// Если пользователь вышел из панели менеджера, он не считается активным менеджером
+	if managerExitStates[user.ID] {
+		return false
+	}
+	return isManagerUser(user)
+}
+
 func isAdminUser(user *tgbotapi.User) bool {
 	if user == nil {
 		return false

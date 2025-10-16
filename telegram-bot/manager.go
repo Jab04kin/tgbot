@@ -137,6 +137,7 @@ func clearClientStates(chatID int64) {
 	delete(messageModeStates, chatID)
 	delete(searchState, chatID)
 	delete(exportTicketIDState, chatID)
+	delete(managerExitStates, chatID)
 }
 
 // Очищает состояния менеджера и разрывает режим ответа (удаляет userTickets для чата менеджера)
@@ -146,7 +147,7 @@ func clearManagerStates(chatID int64) {
 }
 
 func isManagerResponse(message *tgbotapi.Message) bool {
-	return isManagerUser(message.From)
+	return isManagerUserActive(message.From)
 }
 
 func handleManagerResponse(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {

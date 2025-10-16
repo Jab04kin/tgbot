@@ -37,6 +37,7 @@ var userStates = make(map[int64]*UserState)
 var questionStates = make(map[int64]bool)    // true если пользователь в режиме вопроса менеджеру
 var messageModeStates = make(map[int64]bool) // true если пользователь в режиме написания сообщения в тикет
 var nameCollectState = make(map[int64]bool)  // true если ожидаем имя клиента для контакта с менеджером
+var managerExitStates = make(map[int64]bool) // true если менеджер вышел из панели менеджера
 
 var products = []Product{
 	{"Футболка Крылатые Фразы белая", []string{"S", "M", "L", "XL", "XXL"}, "https://osteomerch.com/katalog/item/colorful-jumper-with-horizontal-stripes/", "./katalog/Крылатые Фразы/1.jpg"},
@@ -236,8 +237,8 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			clearClientStates(chatID)
 		}
 		// Стартовая точка: показ админ-панели админу
-		// Проверяем, является ли пользователь менеджером
-		if isManagerResponse(message) {
+		// Проверяем, является ли пользователь активным менеджером
+		if isManagerUserActive(message.From) {
 			sendManagerMenu(bot, chatID)
 		} else {
 			sendMainMenuWithUser(bot, chatID, message.From)
@@ -245,6 +246,8 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 	case "/manager":
 		// Принудительно открыть меню менеджера, если у пользователя есть права менеджера
 		if isManagerUser(message.From) {
+			// Сбрасываем состояние выхода из панели менеджера
+			delete(managerExitStates, message.From.ID)
 			sendManagerMenu(bot, chatID)
 		} else {
 			msg := tgbotapi.NewMessage(chatID, "Недостаточно прав. Доступно только для менеджеров.")
@@ -370,8 +373,8 @@ func sendMainMenuWithUser(bot *tgbotapi.BotAPI, chatID int64, user *tgbotapi.Use
 		tgbotapi.NewInlineKeyboardButtonData("Связаться с менеджером", "contact_manager"),
 	))
 
-	// Добавляем кнопку панели менеджера если пользователь - менеджер
-	if user != nil && isManagerUser(user) {
+	// Добавляем кнопку панели менеджера если пользователь - активный менеджер
+	if user != nil && isManagerUserActive(user) {
 		keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("👨‍💼 Панель менеджера", "manager_panel"),
 		))
@@ -497,12 +500,16 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		}
 	case "exit_manager_panel":
 		if isManagerUser(callback.From) {
+			// Устанавливаем состояние выхода из панели менеджера
+			managerExitStates[callback.From.ID] = true
 			sendMainMenuWithUser(bot, chatID, callback.From)
 		} else {
 			sendMainMenuWithUser(bot, chatID, callback.From)
 		}
 	case "manager_panel":
 		if isManagerUser(callback.From) {
+			// Сбрасываем состояние выхода из панели менеджера
+			delete(managerExitStates, callback.From.ID)
 			sendManagerMenu(bot, chatID)
 		} else {
 			sendMainMenuWithUser(bot, chatID, callback.From)

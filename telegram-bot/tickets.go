@@ -448,8 +448,8 @@ func handleManagerQuestion(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		return
 	}
 
-	// Обновляем данные пользователя в тикете
-	updateTicketUserInfo(ticketID, message.From.UserName, message.From.FirstName, message.From.LastName)
+    // Обновляем данные пользователя в тикете
+    updateTicketUserInfo(ticketID, message.From.UserName, message.From.FirstName, message.From.LastName, "")
 
 	// Добавляем сообщение клиента в тикет
 	addMessageToTicket(ticketID, chatID, question, false)

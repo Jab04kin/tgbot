@@ -800,15 +800,26 @@ func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
     // Пробуем записать данные в активный тикет пользователя (если есть)
     if ticketID, exists := userTickets[chatID]; exists {
         if t, ok := tickets[ticketID]; ok {
-            // Сохраняем данные опроса в тикет
-            t.Height = state.Height
-            t.ChestSize = state.ChestSize
-            t.Oversize = oversize
-            
-            // Сохраняем рекомендованный размер
+            // Куда сохранять: для себя или для другого
+            isForSelf := true
+            if state.ForSelf != nil {
+                isForSelf = *state.ForSelf
+            }
+
             mark, _ := getSizeInfo(state.ChestSize, oversize)
-            t.RecommendedSize = mark
-            
+
+            if isForSelf {
+                t.Height = state.Height
+                t.ChestSize = state.ChestSize
+                t.Oversize = oversize
+                t.RecommendedSize = mark
+            } else {
+                t.OtherHeight = state.Height
+                t.OtherChestSize = state.ChestSize
+                t.OtherOversize = oversize
+                t.RecommendedOtherSize = mark
+            }
+
             // если ФИО было собрано — обновим
             if state.FirstName != "" || state.LastName != "" || state.DopName != "" {
                 t.FirstName = state.FirstName

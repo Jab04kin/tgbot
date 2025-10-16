@@ -481,8 +481,12 @@ func handleManagerQuestion(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		return
 	}
 
-    // Обновляем данные пользователя в тикете
-    updateTicketUserInfo(ticketID, message.From.UserName, message.From.FirstName, message.From.LastName, "")
+    // Обновляем только username, не затирая ФИО из опроса
+    if t, ok := tickets[ticketID]; ok {
+        updateTicketUserInfo(ticketID, message.From.UserName, t.FirstName, t.LastName, t.DopName)
+    } else {
+        updateTicketUserInfo(ticketID, message.From.UserName, message.From.FirstName, message.From.LastName, "")
+    }
 
 	// Добавляем сообщение клиента в тикет
 	addMessageToTicket(ticketID, chatID, question, false)

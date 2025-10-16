@@ -36,6 +36,9 @@ func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 		tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("❓ Помощь", "help"),
 		),
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("🚪 Выйти из панели менеджера", "exit_manager_panel"),
+		),
 	)
 
 	msg.ReplyMarkup = keyboard

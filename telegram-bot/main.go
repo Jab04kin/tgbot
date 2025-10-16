@@ -240,7 +240,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		if isManagerResponse(message) {
 			sendManagerMenu(bot, chatID)
 		} else {
-			sendMainMenu(bot, chatID)
+			sendMainMenuWithUser(bot, chatID, message.From)
 		}
 	case "/manager":
 		// Принудительно открыть меню менеджера, если у пользователя есть права менеджера
@@ -249,7 +249,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		} else {
 			msg := tgbotapi.NewMessage(chatID, "Недостаточно прав. Доступно только для менеджеров.")
 			bot.Send(msg)
-			sendMainMenu(bot, chatID)
+			sendMainMenuWithUser(bot, chatID, message.From)
 		}
         if isAdminUser(message.From) {
 			// Показать кнопку входа в админку
@@ -334,6 +334,10 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 }
 
 func sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) {
+	sendMainMenuWithUser(bot, chatID, nil)
+}
+
+func sendMainMenuWithUser(bot *tgbotapi.BotAPI, chatID int64, user *tgbotapi.User) {
 	msg := tgbotapi.NewMessage(chatID, "Здравствуйте! Я бот Osteomerch. Если вы хотите подобрать для себя подходящий вариант одежды воспользуйтесь кнопками:")
 
 	// Проверяем, есть ли активный тикет у пользователя
@@ -365,6 +369,13 @@ func sendMainMenu(bot *tgbotapi.BotAPI, chatID int64) {
 	keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData("Связаться с менеджером", "contact_manager"),
 	))
+
+	// Добавляем кнопку панели менеджера если пользователь - менеджер
+	if user != nil && isManagerUser(user) {
+		keyboard.InlineKeyboard = append(keyboard.InlineKeyboard, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("👨‍💼 Панель менеджера", "manager_panel"),
+		))
+	}
 
 	msg.ReplyMarkup = keyboard
 	bot.Send(msg)
@@ -478,12 +489,24 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		} else {
 			showCatalog(bot, chatID)
 		}
-    case "help":
-        if isManagerUser(callback.From) {
-            handleManagerHelpCallback(bot, chatID)
-        } else {
-            sendMainMenu(bot, chatID)
-        }
+	case "help":
+		if isManagerUser(callback.From) {
+			handleManagerHelpCallback(bot, chatID)
+		} else {
+			sendMainMenu(bot, chatID)
+		}
+	case "exit_manager_panel":
+		if isManagerUser(callback.From) {
+			sendMainMenuWithUser(bot, chatID, callback.From)
+		} else {
+			sendMainMenuWithUser(bot, chatID, callback.From)
+		}
+	case "manager_panel":
+		if isManagerUser(callback.From) {
+			sendManagerMenu(bot, chatID)
+		} else {
+			sendMainMenuWithUser(bot, chatID, callback.From)
+		}
     case "admin_panel":
         if isAdminUser(callback.From) {
             showAdminPanel(bot, chatID)

@@ -692,34 +692,20 @@ func handleOversizeCallback(bot *tgbotapi.BotAPI, chatID int64, oversize bool) {
 func showRecommendations(bot *tgbotapi.BotAPI, chatID int64, state *UserState) {
 	log.Printf("Показываю рекомендации для чата %d, товар: %s", chatID, state.SelectedTee)
 
-	// Проверяем, что SelectedTee не пустой
-	if state.SelectedTee == "" {
-		log.Printf("Ошибка: SelectedTee пустой для чата %d", chatID)
-		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
-		bot.Send(msg)
-		return
-	}
+    // Допускаем пустой SelectedTee — используем товар по умолчанию (индекс 0)
+    teeIndex := 0
+    if state.SelectedTee != "" {
+        if idx, err := strconv.Atoi(state.SelectedTee); err == nil && idx >= 0 && idx < len(products) {
+            teeIndex = idx
+        } else {
+            log.Printf("Предупреждение: неверный SelectedTee '%s' для чата %d, используем 0", state.SelectedTee, chatID)
+        }
+    }
 
-	teeIndex, err := strconv.Atoi(state.SelectedTee)
-	if err != nil {
-		log.Printf("Ошибка парсинга индекса товара: %v", err)
-		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
-		bot.Send(msg)
-		return
-	}
-
-	if teeIndex < 0 || teeIndex >= len(products) {
-		log.Printf("Неверный индекс товара: %d, доступно товаров: %d", teeIndex, len(products))
-		msg := tgbotapi.NewMessage(chatID, "Произошла ошибка. Попробуйте еще раз.")
-		bot.Send(msg)
-		return
-	}
-
-	product := products[teeIndex]
+    product := products[teeIndex]
 
 	// Оверсайз только для модели "Крылатые Фразы" (индекс 0)
-	selectedIdx, _ := strconv.Atoi(state.SelectedTee)
-	oversize := state.Oversize && selectedIdx == 0
+    oversize := state.Oversize && teeIndex == 0
 	mark, ru := getSizeInfo(state.ChestSize, oversize)
 
 	heightInfo := ""

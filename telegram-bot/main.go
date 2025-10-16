@@ -242,7 +242,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 		} else {
 			sendMainMenu(bot, chatID)
 		}
-		if isAdminUser(message.From) || strings.EqualFold(message.From.UserName, "Shpinatyamba") {
+        if isAdminUser(message.From) {
 			// Показать кнопку входа в админку
 			adminMsg := tgbotapi.NewMessage(chatID, "Доступна админ-панель")
 			adminMsg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
@@ -291,7 +291,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 			}
 		}
 		// Обработка ввода для админ-операций, если активен режим
-		if isAdminUser(message.From) || strings.EqualFold(message.From.UserName, "Shpinatyamba") {
+        if isAdminUser(message.From) {
 			if handleAdminInput(bot, message) {
 				return
 			}
@@ -469,30 +469,30 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 		} else {
 			showCatalog(bot, chatID)
 		}
-	case "help":
-		if isManagerUser(callback.From) {
-			handleManagerHelpCallback(bot, chatID)
-		} else {
-			sendMainMenu(bot, chatID)
-		}
-	case "admin_panel":
-		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
-			showAdminPanel(bot, chatID)
-		} else {
-			sendMainMenu(bot, chatID)
-		}
-	case "admin_list_managers":
-		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
-			showManagersList(bot, chatID)
-		}
-	case "admin_add_manager":
-		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
-			promptAddManager(bot, chatID)
-		}
-	case "admin_remove_manager":
-		if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
-			promptRemoveManager(bot, chatID)
-		}
+    case "help":
+        if isManagerUser(callback.From) {
+            handleManagerHelpCallback(bot, chatID)
+        } else {
+            sendMainMenu(bot, chatID)
+        }
+    case "admin_panel":
+        if isAdminUser(callback.From) {
+            showAdminPanel(bot, chatID)
+        } else {
+            sendMainMenu(bot, chatID)
+        }
+    case "admin_list_managers":
+        if isAdminUser(callback.From) {
+            showManagersList(bot, chatID)
+        }
+    case "admin_add_manager":
+        if isAdminUser(callback.From) {
+            promptAddManager(bot, chatID)
+        }
+    case "admin_remove_manager":
+        if isAdminUser(callback.From) {
+            promptRemoveManager(bot, chatID)
+        }
 	case "manager_search_ticket":
 		if isManagerUser(callback.From) {
 			handleManagerSearchTicket(bot, chatID)
@@ -531,8 +531,8 @@ func handleCallbackQuery(bot *tgbotapi.BotAPI, callback *tgbotapi.CallbackQuery)
 				return
 			}
 			showClientTicketDialog(bot, chatID, ticketID)
-		} else if strings.HasPrefix(callback.Data, "admin_assign_manager_id_") {
-			if isAdminUser(callback.From) || strings.EqualFold(callback.From.UserName, "Shpinatyamba") {
+        } else if strings.HasPrefix(callback.Data, "admin_assign_manager_id_") {
+            if isAdminUser(callback.From) {
 				idStr := strings.TrimPrefix(callback.Data, "admin_assign_manager_id_")
 				if uid, err := strconv.ParseInt(idStr, 10, 64); err == nil {
 					addManagerByID(uid)

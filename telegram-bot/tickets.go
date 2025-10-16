@@ -309,7 +309,7 @@ func createSurveyTicket(chatID int64) int {
         CreatedAt:       time.Now(),
         LastMessage:     time.Now(),
         Status:          "open",
-        Messages:        []TicketMessage{},
+        Messages:        []Message{},
     }
 
     tickets[ticketID] = ticket

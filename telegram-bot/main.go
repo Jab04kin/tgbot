@@ -596,9 +596,9 @@ func startSurvey(bot *tgbotapi.BotAPI, chatID int64) {
 	log.Printf("Начинаю опрос для чата %d", chatID)
     userStates[chatID] = &UserState{Step: 1}
 
-    // Создаём тикет для сохранения данных опроса
+    // Создаём тихий тикет для сохранения данных опроса (без уведомлений менеджерам)
     if _, exists := userTickets[chatID]; !exists {
-        createTicketAndAskQuestion(bot, chatID, "Не определен")
+        createSurveyTicket(chatID)
     }
 
     // Шаг 1: запрос ФИО

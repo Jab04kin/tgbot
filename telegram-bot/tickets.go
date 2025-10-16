@@ -290,6 +290,35 @@ func createTicketAndAskQuestion(bot *tgbotapi.BotAPI, chatID int64, recommendedS
 	questionStates[chatID] = true
 }
 
+// createSurveyTicket создает тикет без уведомлений менеджерам и без сообщений пользователю
+func createSurveyTicket(chatID int64) int {
+    ticketID := nextTicketID
+    nextTicketID++
+
+    ticket := &Ticket{
+        ID:              ticketID,
+        UserID:          chatID,
+        Username:        "",
+        FirstName:       "",
+        LastName:        "",
+        DopName:         "",
+        Height:          0,
+        ChestSize:       0,
+        Oversize:        false,
+        RecommendedSize: "",
+        CreatedAt:       time.Now(),
+        LastMessage:     time.Now(),
+        Status:          "open",
+        Messages:        []TicketMessage{},
+    }
+
+    tickets[ticketID] = ticket
+    userTickets[chatID] = ticketID
+    saveTickets()
+    log.Printf("Создан тихий тикет для опроса #%d для чата %d", ticketID, chatID)
+    return ticketID
+}
+
 // Функции для работы с сообщениями в тикетах
 
 // addMessageToTicket добавляет сообщение в тикет

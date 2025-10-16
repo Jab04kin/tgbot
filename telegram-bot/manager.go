@@ -21,7 +21,7 @@ func sendManagerMenu(bot *tgbotapi.BotAPI, chatID int64) {
 		}
 	}
 
-	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👨‍💼 Добро пожаловать, менеджер!\n\n📊 Тикеты: 🟢 %d открытых | 🔴 %d закрытых\n\nВыберите действие:", openTickets, closedTickets))
+	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("👨‍💼 Добро пожаловать, менеджер!\n\n📊 Тикеты: 🟢 %d открытых | 🔴 %d закрытых\n\n💡 Подсказка: Вы можете выйти из панели менеджера и стать обычным пользователем, а затем вернуться командой /manager\n\nВыберите действие:", openTickets, closedTickets))
 
 	keyboard := tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(

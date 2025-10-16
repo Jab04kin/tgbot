@@ -283,12 +283,20 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
 				return
 			}
 
-			// Убедимся, что есть тикет
-			if _, exists := userTickets[chatID]; !exists {
-				createTicketAndAskQuestion(bot, chatID, "Не определен")
-			}
-            if ticketID, ok := userTickets[chatID]; ok {
-                updateTicketUserInfo(ticketID, message.From.UserName, providedName, "", "")
+            // Гарантируем открытый тикет для диалога с менеджером
+            var ticketID int
+            if id, exists := userTickets[chatID]; exists {
+                if t, ok := tickets[id]; ok && t.Status == "open" {
+                    ticketID = id
+                }
+            }
+            if ticketID == 0 {
+                createTicketAndAskQuestion(bot, chatID, "Не определен")
+                ticketID = userTickets[chatID]
+            }
+            // Обновим username, но не трогаем ФИО из опроса
+            if t, ok := tickets[ticketID]; ok {
+                updateTicketUserInfo(ticketID, message.From.UserName, t.FirstName, t.LastName, t.DopName)
             }
 			delete(nameCollectState, chatID)
 			bot.Send(tgbotapi.NewMessage(chatID, "Спасибо! Теперь напишите ваш вопрос менеджеру."))
